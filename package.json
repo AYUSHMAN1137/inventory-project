@@ -1,0 +1,27 @@
+{
+  "name": "deeptech-lab-inventory",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Deep-Tech Innovation Centre Lab Inventory Management System",
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "engines": {
+    "node": ">=20.0.0"
+  },
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=apps/api\" \"npm run dev --workspace=apps/web\"",
+    "dev:api": "npm run dev --workspace=apps/api",
+    "dev:web": "npm run dev --workspace=apps/web",
+    "build": "npm run build --workspaces",
+    "typecheck": "npm run typecheck --workspaces",
+    "lint": "npm run lint --workspaces",
+    "generate:contracts": "openapi-typescript packages/contracts/openapi.yaml -o packages/contracts/generated/api.d.ts"
+  },
+  "devDependencies": {
+    "concurrently": "^9.1.2",
+    "openapi-typescript": "^7.6.1",
+    "typescript": "^5.8.2"
+  }
+}

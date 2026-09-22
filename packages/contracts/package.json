@@ -1,0 +1,10 @@
+{
+  "name": "@deeptech/contracts",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "build": "echo contracts-built"
+  },
+  "main": "generated/api.d.ts",
+  "types": "generated/api.d.ts"
+}

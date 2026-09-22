@@ -1,0 +1,483 @@
+openapi: 3.1.0
+info:
+  title: Deep-Tech Lab Inventory Management System API
+  version: 1.0.0
+  description: Official REST API specification for the Deep-Tech Innovation Centre Lab Inventory System.
+servers:
+  - url: /api/v1
+    description: Current host API server
+
+paths:
+  /health/live:
+    get:
+      summary: Liveness probe
+      responses:
+        '200':
+          description: Process is running
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ok
+                  timestamp:
+                    type: string
+                    format: date-time
+
+  /health/ready:
+    get:
+      summary: Readiness probe
+      responses:
+        '200':
+          description: Database and services are ready
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    example: ready
+
+  /auth/login:
+    post:
+      summary: Authenticate user and create session
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - collegeId
+                - password
+              properties:
+                collegeId:
+                  type: string
+                  example: "2024BCSE042"
+                password:
+                  type: string
+                  format: password
+      responses:
+        '200':
+          description: Successfully authenticated
+        '401':
+          description: Invalid credentials
+
+  /auth/me:
+    get:
+      summary: Get currently authenticated user profile
+      responses:
+        '200':
+          description: Authenticated user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/UserProfile'
+
+  /auth/logout:
+    post:
+      summary: Invalidate user session
+      responses:
+        '200':
+          description: Logged out successfully
+
+  /items:
+    get:
+      summary: List inventory items with filtering & search
+      parameters:
+        - name: q
+          in: query
+          schema:
+            type: string
+        - name: categoryId
+          in: query
+          schema:
+            type: string
+        - name: nature
+          in: query
+          schema:
+            type: string
+            enum: [RETURNABLE, CONSUMABLE]
+        - name: availableOnly
+          in: query
+          schema:
+            type: boolean
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: pageSize
+          in: query
+          schema:
+            type: integer
+            default: 20
+      responses:
+        '200':
+          description: Paginated item list
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Item'
+                  meta:
+                    $ref: '#/components/schemas/PaginationMeta'
+
+    post:
+      summary: Create a new inventory item (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateItemRequest'
+      responses:
+        '201':
+          description: Created item
+
+  /categories:
+    get:
+      summary: List all categories
+      responses:
+        '200':
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+
+  /locations:
+    get:
+      summary: List hierarchical locations
+      responses:
+        '200':
+          description: Hierarchy of locations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Location'
+
+  /requests:
+    get:
+      summary: List requests (scoped to student or all for admin)
+      responses:
+        '200':
+          description: List of requests
+    post:
+      summary: Submit new equipment request (Student)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateRequestInput'
+      responses:
+        '201':
+          description: Created request
+
+  /requests/{id}/decision:
+    post:
+      summary: Make an approval or rejection decision on request (Admin)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestDecisionInput'
+      responses:
+        '200':
+          description: Decision applied
+
+  /issues:
+    post:
+      summary: Physically issue approved items to student (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PhysicalIssueInput'
+      responses:
+        '200':
+          description: Items issued successfully
+
+  /returns:
+    post:
+      summary: Process return of allocated items (Admin)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ProcessReturnInput'
+      responses:
+        '200':
+          description: Items returned successfully
+
+  /kits:
+    get:
+      summary: List kits / packages
+      responses:
+        '200':
+          description: List of kits
+
+components:
+  schemas:
+    UserProfile:
+      type: object
+      properties:
+        id:
+          type: string
+        collegeId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        role:
+          type: string
+          enum: [ADMIN, STUDENT]
+
+    Item:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        model:
+          type: string
+          nullable: true
+        description:
+          type: string
+          nullable: true
+        nature:
+          type: string
+          enum: [RETURNABLE, CONSUMABLE]
+        trackingMode:
+          type: string
+          enum: [SERIALIZED, BULK]
+        categoryId:
+          type: string
+        categoryName:
+          type: string
+        unitOfMeasure:
+          type: string
+        totalQuantity:
+          type: integer
+        availableQuantity:
+          type: integer
+        lowStockThreshold:
+          type: integer
+          nullable: true
+        locationBreadcrumb:
+          type: string
+
+    Category:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+
+    Location:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        type:
+          type: string
+          enum: [LAB, ROOM, CABINET, SHELF, DRAWER]
+        parentId:
+          type: string
+          nullable: true
+
+    CreateItemRequest:
+      type: object
+      required:
+        - name
+        - categoryId
+        - nature
+        - trackingMode
+      properties:
+        name:
+          type: string
+        model:
+          type: string
+        description:
+          type: string
+        categoryId:
+          type: string
+        nature:
+          type: string
+          enum: [RETURNABLE, CONSUMABLE]
+        trackingMode:
+          type: string
+          enum: [SERIALIZED, BULK]
+        unitOfMeasure:
+          type: string
+          default: "pcs"
+        lowStockThreshold:
+          type: integer
+        defaultLocationId:
+          type: string
+
+    CreateRequestInput:
+      type: object
+      required:
+        - targetType
+        - purpose
+        - lines
+      properties:
+        targetType:
+          type: string
+          enum: [PERSONAL, PROJECT]
+        projectId:
+          type: string
+          nullable: true
+        purpose:
+          type: string
+        expectedReturnDate:
+          type: string
+          format: date
+          nullable: true
+        lines:
+          type: array
+          items:
+            type: object
+            required:
+              - itemId
+              - quantity
+            properties:
+              itemId:
+                type: string
+              quantity:
+                type: integer
+                minimum: 1
+
+    RequestDecisionInput:
+      type: object
+      required:
+        - status
+        - lines
+      properties:
+        status:
+          type: string
+          enum: [APPROVED, PARTIALLY_APPROVED, REJECTED]
+        decisionReason:
+          type: string
+        lines:
+          type: array
+          items:
+            type: object
+            required:
+              - lineId
+              - approvedQuantity
+            properties:
+              lineId:
+                type: string
+              approvedQuantity:
+                type: integer
+                minimum: 0
+              rejectionReason:
+                type: string
+
+    PhysicalIssueInput:
+      type: object
+      required:
+        - requestId
+        - collectorCollegeId
+        - lines
+      properties:
+        requestId:
+          type: string
+        collectorCollegeId:
+          type: string
+        expectedReturnDate:
+          type: string
+          format: date
+          nullable: true
+        note:
+          type: string
+        lines:
+          type: array
+          items:
+            type: object
+            required:
+              - requestLineId
+              - quantity
+            properties:
+              requestLineId:
+                type: string
+              quantity:
+                type: integer
+              unitIds:
+                type: array
+                items:
+                  type: string
+
+    ProcessReturnInput:
+      type: object
+      required:
+        - issueId
+        - lines
+      properties:
+        issueId:
+          type: string
+        note:
+          type: string
+        lines:
+          type: array
+          items:
+            type: object
+            required:
+              - issueLineId
+              - quantity
+            properties:
+              issueLineId:
+                type: string
+              quantity:
+                type: integer
+              unitId:
+                type: string
+                nullable: true
+              condition:
+                type: string
+                enum: [WORKING, NEEDS_CHECKING, NOT_WORKING]
+                default: WORKING
+
+    PaginationMeta:
+      type: object
+      properties:
+        page:
+          type: integer
+        pageSize:
+          type: integer
+        total:
+          type: integer
+        totalPages:
+          type: integer
