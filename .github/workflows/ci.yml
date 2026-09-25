@@ -1,0 +1,55 @@
+name: CI
+
+on:
+  push:
+    branches: [master, main, develop]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test --workspaces --if-present
+      - run: npm run build
+      - run: npm audit --omit=dev
+
+  postgres-migration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: inventory
+          POSTGRES_PASSWORD: inventory_ci
+          POSTGRES_DB: deeptech_inventory
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U inventory -d deeptech_inventory"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgresql://inventory:inventory_ci@localhost:5432/deeptech_inventory?schema=public
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - run: npm ci
+      - run: npx prisma migrate deploy --schema apps/api/prisma/schema.postgresql.prisma
+      - run: npx prisma validate --schema apps/api/prisma/schema.postgresql.prisma

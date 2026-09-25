@@ -6,3 +6,5 @@ dist
 *.sqlite
 *.sqlite-journal
 coverage
+test-results
+playwright-report

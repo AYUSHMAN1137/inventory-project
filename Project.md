@@ -1,6 +1,6 @@
 # Deep-Tech Innovation Centre — Lab Inventory Management System
 
-> **Status:** **100% Implemented & Verified**. All 14 phases (specs, schema, session auth, dual-track catalog, student requests, admin decisions, atomic handover/issue, return check-ins with condition inspection, robotics kit unbundling, stock intake receiving, and immutable operational ledger) are live, tested, and verified in the browser.
+> **Status (2026-09-22): Active production rebuild.** Secure backend workflows, an operational student/admin frontend, automated API/component tests, and PostgreSQL deployment assets now exist. The project is **not yet production-complete**: PostgreSQL runtime/concurrency execution, Playwright browser coverage, backup restoration, and final operational sign-off remain unverified.
 
 ## 1. Project Origin
 
@@ -384,14 +384,19 @@ Admin should be able to answer:
 
 ## 18. Current Technical Status
 
-- The proposed product direction has been approved by Sir.
-- No implementation has started.
-- The user is the primary full-stack builder; the assigned frontend teammate is currently a bounded junior contributor.
-- Deep implementation research was completed across comparable lab inventory workflows, Node/Express/PostgreSQL/Prisma architecture, React UX, OWASP security, automated testing, CI, deployment, and database recovery.
-- A complete proposed implementation plan is saved at `.hermes/plans/2026-09-21_114950-deep-tech-lab-inventory-implementation.md`.
-- Proposed baseline: Node.js 24 LTS, TypeScript modular monolith, Express 5, PostgreSQL, Prisma, React/Vite, OpenAPI, server-side sessions, Vitest/Supertest/React Testing Library/Playwright, GitHub Actions, and a single-server or managed deployment.
-- Implementation has not started because Phase 0 policy decisions must be reviewed and locked first.
-- Discuss and confirm architecture before implementation or heavy operations.
+- The production rebuild is in progress under the user’s explicit Build Mode authorization.
+- The user remains the primary full-stack builder; the assigned frontend teammate remains a bounded junior contributor.
+- The implemented stack is a strict TypeScript npm-workspace modular monolith: React/Vite frontend, Express 5 API, Prisma, SQLite for isolated local tests, and a separate PostgreSQL production schema/migration.
+- Authentication now uses opaque random `HttpOnly` session cookies backed by hashed database session records, expiry/revocation, role authorization, login rate limiting, and CSRF validation on state-changing requests.
+- Request decisions, physical issue, return, stock receiving, corrections, users, projects, and project membership are server validated; stock-changing workflows use Prisma transactions and movement/audit records.
+- The generated single-page dark dashboard has been replaced by role-focused student/admin navigation and an operational navy/light visual system. Admin work is queue/table-led; student work is catalogue/request-led.
+- Verified locally on 2026-09-22: root lint and type-check pass; 10 API tests, 2 frontend component tests, and 3 Chromium Playwright shell/responsive tests pass; API and frontend production builds pass; production dependency audit reports zero vulnerabilities; PostgreSQL Prisma schema validates. A diff whitespace check and targeted secret/dangerous-code scan also pass.
+- A root `start.bat` now performs first-run dependency/database setup, starts API and web processes, waits for both health checks, opens the browser, and safely detects an already-running application. It was exercised successfully from Windows CMD.
+- Live local wiring was verified against the seeded SQLite development database: API liveness/readiness and web root returned HTTP 200; an admin login → authenticated inventory read (4 items) → CSRF-protected logout smoke flow returned 200/200/200.
+- PostgreSQL migration SQL, GitHub Actions CI, container files, and backup/restore scripts are present.
+- Still unverified because this machine has no Docker/PostgreSQL runtime: applying the migration against a live PostgreSQL instance, PostgreSQL concurrency tests, and a real backup/restore drill.
+- Full real-backend Playwright request → approval → issue → return coverage and a broader accessibility audit remain pending; current browser tests cover signed-out, admin navigation/intake, and mobile overflow behavior.
+- The complete implementation plan remains `.hermes/plans/2026-09-21_114950-deep-tech-lab-inventory-implementation.md`.
 
 ## 19. Collaboration and Ownership Plan
 
@@ -483,7 +488,90 @@ Its proposed phase order is:
 
 Key proposed architectural choices remain subject to the user's review before implementation: Node.js 24 LTS, TypeScript, Express 5, PostgreSQL, Prisma, React/Vite, same-origin server-side sessions, OpenAPI-generated frontend types, and a modular monolith rather than microservices.
 
-## 24. Change Log
+## 24. Current Prototype Review and Redesign Direction
+
+### Review status
+
+- The generated application is a prototype, not a finished or production-ready implementation.
+- Its broad domain coverage is useful, but the implementation skipped the required discussion, wireframing, design-system, TDD, security-hardening, PostgreSQL, and deployment gates.
+- The user rejects the current generic AI-dashboard visual direction. No redesign or implementation should start until the product experience and visual direction are discussed and approved.
+
+### Useful parts to preserve conceptually
+
+- The monorepo split (`apps/api`, `apps/web`, `packages/contracts`).
+- Core inventory concepts: catalogue, serialized versus bulk stock, returnable versus consumable items, requests, approval, physical handover, returns, locations, kits, and movement history.
+- Backend-authoritative stock changes and role separation.
+
+### Claims that must not be treated as verified completion
+
+- The report claims PostgreSQL and secure server-side sessions, but the prototype currently uses a committed SQLite database and an unsigned user-ID cookie rather than a real session store.
+- It claims comprehensive automated verification, but no unit, integration, concurrency, or Playwright test files are present in the repository.
+- It claims production hardening despite disabled CSP, hardcoded development CORS, missing rate limiting and CSRF controls, and insufficient state/quantity/concurrency validation in critical stock paths.
+- It calls the application 100% complete even though the repository has no deployment/CI/backup implementation and several planned modules are missing or incomplete.
+
+### Redesign principles to discuss
+
+- Design an operational college-lab tool, not a purple-glow SaaS/AI dashboard.
+- Use separate student and admin information architecture instead of one oversized tabbed `App.tsx`.
+- Prefer dense, readable tables and task queues for admin workflows; use cards only where they improve student browsing.
+- Use plain lab language such as Dashboard, Inventory, Requests, Issue Desk, Returns, Locations, and History; avoid decorative language such as Command, Telemetry, Identity Portal, and System Online.
+- Establish college/lab branding, typography, spacing, color, responsive behavior, accessibility, and component states before coding.
+- Remove demo credentials and demo shortcuts from any production-facing interface.
+
+### Required next gate
+
+1. Audit the backend against the original implementation plan and create a keep/rewrite/fix matrix.
+2. Rebuild the application in tested vertical slices; do not attempt a cosmetic reskin over unsafe backend foundations.
+3. Verify the final student and admin workflows in a real browser, then complete production hardening and deployment evidence.
+
+The user has explicitly authorized Build Mode and does not want further prototypes or design-approval pauses. Low-stakes product and design decisions should be made autonomously from the approved requirements and research; ask only when an unavailable stakeholder fact creates a genuine implementation blocker.
+
+### Chosen working direction
+
+- Proceed with a modern technical-lab interface: restrained navy navigation, light operational workspace, teal accent, compact borders, and minimal shadows.
+- Treat the admin experience primarily as an **Operate** surface: queues, tables, next actions, issue/return desks, and exception visibility.
+- Treat the student catalogue primarily as an **Explore** surface: search, filters, availability, request cart, and clear personal status.
+- Separate student and admin navigation and avoid a single oversized tabbed page.
+- A no-backend-write interactive direction prototype is available at `docs/design-direction-prototype.html`; it includes switchable admin dashboard and student catalogue views.
+- The prototype remains only a historical discussion artifact. The user explicitly removed the prototype approval gate and directed implementation of the final product; it is not used by the runtime application.
+
+## 25. Change Log
+
+### 2026-09-22 — Foreground Single-Window Process Lifecycle & Port Cleanup
+
+- Terminated orphaned Vite dev server process (PID 16124) lingering on port 5173 from previous background test runs.
+- Verified both port 5173 and port 4000 are completely free of active background listeners.
+- Simplified `start.bat` to run `npm run dev` directly in the active terminal window (foreground) instead of detaching into a separate unmanaged window via `start cmd /k`. Closing the terminal window now immediately terminates both API and Web processes cleanly.
+
+### 2026-09-22 — One-Click Local Startup and Live Wiring Verification
+
+- Added `start.bat` at the project root for dependency setup, SQLite schema preparation, first-run seed data, API/web startup, health polling, browser launch, and already-running detection.
+- Exercised the batch file from Windows CMD and fixed two environment-specific failures: Prisma DLL locking when servers already existed and Git Bash shadowing Windows `timeout.exe`.
+- Verified API liveness/readiness, web HTTP response, admin session login, authenticated inventory retrieval, CSRF-protected logout, and repeat execution of `start.bat`.
+- Re-ran lint, type-check, 12 automated unit/component/integration tests, 3 Chromium Playwright tests, production builds, and the production dependency audit successfully.
+
+### 2026-09-22 — Production Rebuild: Security, Workflows, UI, Tests, and Operations
+
+- Replaced forgeable user-ID cookie authentication with opaque hashed database sessions, expiry/revocation, CSRF checks, role checks, and login rate limiting.
+- Reworked inventory, request decisions/cancellation, issue, return, stock intake/corrections, user, project, and membership routes with validation and transactional stock/audit behavior.
+- Added isolated API integration tests, frontend role-shell tests, and Chromium Playwright shell/responsive tests; verified 10 API tests, 2 frontend component tests, 3 browser tests, type-check, build, and zero production dependency vulnerabilities.
+- Replaced the generated dark all-in-one dashboard with distinct operational admin and student navigation, readable queues/tables, searchable catalogue views, responsive layout, and accessible states.
+- Added a PostgreSQL production schema, generated initial migration, GitHub Actions quality/migration jobs, container deployment files, and backup/restore runbook/scripts.
+- Kept completion claims honest: live PostgreSQL execution, concurrency tests, full real-backend Playwright workflows, and a restore drill remain pending because the local machine currently has no Docker/PostgreSQL runtime.
+
+### 2026-09-22 — Product Direction Prototype
+
+- User authorized autonomous progress after the prototype audit.
+- Selected a restrained modern technical-lab direction rather than the rejected purple-glow AI-dashboard style.
+- Created an interactive admin/student product-direction prototype without modifying application code or backend behavior.
+- Kept implementation on hold pending visual and workflow feedback from the user.
+
+### 2026-09-22 — Generated Prototype Audit and Redesign Hold
+
+- Reviewed `implementation-plan-report.md` against the repository and original implementation plan.
+- Reclassified the claimed 100%-complete system as an unverified prototype.
+- Recorded visual rejection, report/code contradictions, missing tests and security controls, and the requirement to discuss UX direction before implementation.
+- Locked the principle that the next version must be workflow-led and operational rather than a generic AI-generated dashboard.
 
 ### 2026-09-21 — Complete Researched Implementation Plan
 

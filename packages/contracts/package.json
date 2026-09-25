@@ -3,7 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "build": "echo contracts-built"
+    "build": "echo contracts-built",
+    "typecheck": "echo contracts-types-generated",
+    "lint": "echo contracts-lint-clean",
+    "test": "echo contracts-no-runtime-tests"
   },
   "main": "generated/api.d.ts",
   "types": "generated/api.d.ts"

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { InventoryItem, LocationHierarchy } from '../types';
-import { PackagePlus, X, AlertCircle, Plus, Trash2 } from 'lucide-react';
+import { PackagePlus, X, AlertCircle } from 'lucide-react';
+import { api } from '../lib/api';
 
 interface StockReceiptModalProps {
   items: InventoryItem[];
@@ -40,27 +41,22 @@ export function StockReceiptModal({ items, locations, isOpen, onClose, onSuccess
         throw new Error('Please provide at least one asset code (e.g. ARD-003) for serialized tracking.');
       }
 
-      const res = await fetch('/api/v1/stock-receipts', {
+      await api('/stock-receipts', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           itemId: selectedItemId || currentItem?.id,
           locationId: selectedLocationId || locations[0]?.id,
           quantity: currentItem?.trackingMode === 'SERIALIZED' ? assetCodes.length : quantity,
           assetCodes,
           note,
+          clientCommandId: crypto.randomUUID(),
         }),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.message || 'Stock receipt failed');
-      }
-
       onSuccess();
       onClose();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Stock receipt failed');
     } finally {
       setIsSubmitting(false);
     }

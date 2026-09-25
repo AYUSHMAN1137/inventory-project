@@ -1,0 +1,393 @@
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum Role {
+  ADMIN
+  STUDENT
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum ItemNature {
+  RETURNABLE
+  CONSUMABLE
+}
+
+enum TrackingMode {
+  SERIALIZED
+  BULK
+}
+
+enum UnitStatus {
+  AVAILABLE
+  ALLOCATED
+  UNAVAILABLE
+  RETIRED
+}
+
+enum RequestTarget {
+  PERSONAL
+  PROJECT
+}
+
+enum RequestDecisionStatus {
+  PENDING
+  APPROVED
+  PARTIALLY_APPROVED
+  REJECTED
+  CANCELLED
+}
+
+enum FulfilmentStatus {
+  NOT_ISSUED
+  PARTIALLY_ISSUED
+  FULFILLED
+}
+
+enum ReturnCondition {
+  WORKING
+  NEEDS_CHECKING
+  NOT_WORKING
+}
+
+enum MovementType {
+  RECEIPT
+  ISSUE
+  RETURN
+  ADJUSTMENT_IN
+  ADJUSTMENT_OUT
+  LOCATION_TRANSFER
+}
+
+model User {
+  id                 String     @id @default(uuid())
+  collegeId          String     @unique
+  name               String
+  email              String?    @unique
+  role               Role       @default(STUDENT)
+  status             UserStatus @default(ACTIVE)
+  passwordHash       String
+  mustChangePassword Boolean    @default(true)
+  createdAt          DateTime   @default(now())
+  updatedAt          DateTime   @updatedAt
+
+  projectMembers     ProjectMember[]
+  requests           Request[]
+  issuedToMe         Issue[]           @relation("IssuedToStudent")
+  issuedByMe         Issue[]           @relation("IssuedByAdmin")
+  returnsProcessed   Return[]          @relation("ProcessedByAdmin")
+  stockMovements     StockMovement[]
+  auditEvents        AuditEvent[]
+  sessions           Session[]
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  tokenHash  String   @unique
+  csrfToken  String
+  userId     String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  lastSeenAt DateTime @default(now())
+
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([expiresAt])
+}
+
+model Project {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     ProjectMember[]
+  requests    Request[]
+  issues      Issue[]
+}
+
+model ProjectMember {
+  id        String   @id @default(uuid())
+  projectId String
+  userId    String
+  role      String   @default("MEMBER") // LEADER or MEMBER
+  joinedAt  DateTime @default(now())
+
+  project   Project  @relation(fields: [projectId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([projectId, userId])
+}
+
+model Category {
+  id          String   @id @default(uuid())
+  name        String   @unique
+  description String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  items       Item[]
+}
+
+model Location {
+  id          String   @id @default(uuid())
+  name        String
+  type        String   // LAB, ROOM, CABINET, SHELF, DRAWER
+  parentId    String?
+  isActive    Boolean  @default(true)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  parent      Location?       @relation("LocationHierarchy", fields: [parentId], references: [id])
+  children    Location[]      @relation("LocationHierarchy")
+  defaultFor  Item[]
+  balances    StockBalance[]
+  unitsHome   InventoryUnit[] @relation("UnitHomeLocation")
+  unitsCur    InventoryUnit[] @relation("UnitCurrentLocation")
+  sourceMoves StockMovement[] @relation("SourceLocation")
+  destMoves   StockMovement[] @relation("DestLocation")
+
+  @@unique([name, parentId])
+}
+
+model Item {
+  id                 String       @id @default(uuid())
+  name               String
+  model              String?
+  description        String?
+  categoryId         String
+  nature             ItemNature   @default(RETURNABLE)
+  trackingMode       TrackingMode @default(BULK)
+  unitOfMeasure      String       @default("pcs")
+  lowStockThreshold  Int?
+  defaultLocationId  String?
+  isActive           Boolean      @default(true)
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  category           Category        @relation(fields: [categoryId], references: [id])
+  defaultLocation    Location?       @relation(fields: [defaultLocationId], references: [id])
+  units              InventoryUnit[]
+  balances           StockBalance[]
+  requestLines       RequestLine[]
+  kitItems           KitItem[]
+  stockMovements     StockMovement[]
+}
+
+model InventoryUnit {
+  id                 String       @id @default(uuid())
+  itemId             String
+  assetCode          String       @unique // e.g. ARD-001
+  serialNumber       String?
+  homeLocationId     String?
+  currentLocationId  String?
+  status             UnitStatus   @default(AVAILABLE)
+  conditionNote      String?
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
+
+  item               Item         @relation(fields: [itemId], references: [id])
+  homeLocation       Location?    @relation("UnitHomeLocation", fields: [homeLocationId], references: [id])
+  currentLocation    Location?    @relation("UnitCurrentLocation", fields: [currentLocationId], references: [id])
+  issueUnits         IssueLineUnit[]
+  returnUnits        ReturnLineUnit[]
+  movements          StockMovement[]
+}
+
+model StockBalance {
+  id                 String   @id @default(uuid())
+  itemId             String
+  locationId         String
+  availableQuantity  Int      @default(0)
+  allocatedQuantity  Int      @default(0)
+  updatedAt          DateTime @updatedAt
+
+  item               Item     @relation(fields: [itemId], references: [id])
+  location           Location @relation(fields: [locationId], references: [id])
+
+  @@unique([itemId, locationId])
+}
+
+model StockReceipt {
+  id                 String   @id @default(uuid())
+  referenceNumber    String?
+  note               String?
+  receivedAt         DateTime @default(now())
+  clientCommandId    String?  @unique
+}
+
+model StockMovement {
+  id                 String       @id @default(uuid())
+  itemId             String
+  unitId             String?
+  sourceLocationId   String?
+  destLocationId     String?
+  quantity           Int
+  type               MovementType
+  reason             String?
+  actorId            String
+  createdAt          DateTime     @default(now())
+
+  item               Item         @relation(fields: [itemId], references: [id])
+  unit               InventoryUnit? @relation(fields: [unitId], references: [id])
+  sourceLocation     Location?    @relation("SourceLocation", fields: [sourceLocationId], references: [id])
+  destLocation       Location?    @relation("DestLocation", fields: [destLocationId], references: [id])
+  actor              User         @relation(fields: [actorId], references: [id])
+}
+
+model Request {
+  id                 String                @id @default(uuid())
+  requesterId        String
+  targetType         RequestTarget         @default(PERSONAL)
+  projectId          String?
+  purpose            String
+  expectedReturnDate DateTime?
+  decisionStatus     RequestDecisionStatus @default(PENDING)
+  fulfilmentStatus   FulfilmentStatus      @default(NOT_ISSUED)
+  decisionReason     String?
+  decidedAt          DateTime?
+  createdAt          DateTime              @default(now())
+  updatedAt          DateTime              @updatedAt
+
+  requester          User                  @relation(fields: [requesterId], references: [id])
+  project            Project?              @relation(fields: [projectId], references: [id])
+  lines              RequestLine[]
+  issues             Issue[]
+}
+
+model RequestLine {
+  id               String   @id @default(uuid())
+  requestId        String
+  itemId           String
+  requestedQty     Int
+  approvedQty      Int      @default(0)
+  issuedQty        Int      @default(0)
+  rejectionReason  String?
+
+  request          Request  @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  item             Item     @relation(fields: [itemId], references: [id])
+  issueLines       IssueLine[]
+}
+
+model Issue {
+  id                 String    @id @default(uuid())
+  requestId          String
+  studentId          String
+  projectId          String?
+  issuedById         String
+  expectedReturnDate DateTime?
+  note               String?
+  clientCommandId    String?   @unique
+  createdAt          DateTime  @default(now())
+
+  request            Request   @relation(fields: [requestId], references: [id])
+  student            User      @relation("IssuedToStudent", fields: [studentId], references: [id])
+  project            Project?  @relation(fields: [projectId], references: [id])
+  issuedBy           User      @relation("IssuedByAdmin", fields: [issuedById], references: [id])
+  lines              IssueLine[]
+  returns            Return[]
+}
+
+model IssueLine {
+  id               String          @id @default(uuid())
+  issueId          String
+  requestLineId    String?
+  quantity         Int
+  returnedQty      Int             @default(0)
+
+  issue            Issue           @relation(fields: [issueId], references: [id], onDelete: Cascade)
+  requestLine      RequestLine?    @relation(fields: [requestLineId], references: [id])
+  units            IssueLineUnit[]
+  returnLines      ReturnLine[]
+}
+
+model IssueLineUnit {
+  id          String        @id @default(uuid())
+  issueLineId String
+  unitId      String
+
+  issueLine   IssueLine     @relation(fields: [issueLineId], references: [id], onDelete: Cascade)
+  unit        InventoryUnit @relation(fields: [unitId], references: [id])
+}
+
+model Return {
+  id              String       @id @default(uuid())
+  issueId         String
+  processedById   String
+  note            String?
+  clientCommandId String?      @unique
+  createdAt       DateTime     @default(now())
+
+  issue           Issue        @relation(fields: [issueId], references: [id])
+  processedBy     User         @relation("ProcessedByAdmin", fields: [processedById], references: [id])
+  lines           ReturnLine[]
+}
+
+model ReturnLine {
+  id              String           @id @default(uuid())
+  returnId        String
+  issueLineId     String
+  quantity        Int
+  condition       ReturnCondition  @default(WORKING)
+  note            String?
+
+  returnRecord    Return           @relation(fields: [returnId], references: [id], onDelete: Cascade)
+  issueLine       IssueLine        @relation(fields: [issueLineId], references: [id])
+  units           ReturnLineUnit[]
+}
+
+model ReturnLineUnit {
+  id           String         @id @default(uuid())
+  returnLineId String
+  unitId       String
+
+  returnLine   ReturnLine     @relation(fields: [returnLineId], references: [id], onDelete: Cascade)
+  unit         InventoryUnit  @relation(fields: [unitId], references: [id])
+}
+
+model Kit {
+  id          String    @id @default(uuid())
+  name        String    @unique
+  description String?
+  isActive    Boolean   @default(true)
+  createdAt   DateTime  @default(now())
+  updatedAt   DateTime  @updatedAt
+
+  items       KitItem[]
+}
+
+model KitItem {
+  id        String   @id @default(uuid())
+  kitId     String
+  itemId    String
+  quantity  Int      @default(1)
+
+  kit       Kit      @relation(fields: [kitId], references: [id], onDelete: Cascade)
+  item      Item     @relation(fields: [itemId], references: [id])
+
+  @@unique([kitId, itemId])
+}
+
+model AuditEvent {
+  id          String   @id @default(uuid())
+  actorId     String?
+  action      String   // e.g. AUTH_LOGIN, STOCK_ISSUE, STOCK_RETURN, ITEM_CREATE
+  entityType  String   // e.g. Item, Request, Issue
+  entityId    String?
+  metadata    String?  // JSON string
+  createdAt   DateTime @default(now())
+
+  actor       User?    @relation(fields: [actorId], references: [id])
+}

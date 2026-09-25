@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { InventoryItem } from '../types';
+import { api } from '../lib/api';
 import { Layers, Send, CheckCircle2, AlertCircle, ShoppingBag, X } from 'lucide-react';
 
 interface RequestModalProps {
@@ -11,7 +12,7 @@ interface RequestModalProps {
 
 export function RequestModal({ item, isOpen, onClose, onSuccess }: RequestModalProps) {
   const [quantity, setQuantity] = useState(1);
-  const [targetType, setTargetType] = useState<'PERSONAL' | 'PROJECT'>('PERSONAL');
+  const targetType: 'PERSONAL' = 'PERSONAL';
   const [purpose, setPurpose] = useState('');
   const [expectedReturnDate, setExpectedReturnDate] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -26,21 +27,15 @@ export function RequestModal({ item, isOpen, onClose, onSuccess }: RequestModalP
     setError(null);
 
     try {
-      const res = await fetch('/api/v1/requests', {
+      await api('/requests', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           targetType,
           purpose,
-          expectedReturnDate: expectedReturnDate || undefined,
+          expectedReturnDate: expectedReturnDate ? new Date(`${expectedReturnDate}T12:00:00`).toISOString() : undefined,
           lines: [{ itemId: item.id, quantity }],
         }),
       });
-
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.error?.message || 'Failed to submit request');
-      }
 
       setIsSuccess(true);
       setTimeout(() => {
@@ -116,34 +111,12 @@ export function RequestModal({ item, isOpen, onClose, onSuccess }: RequestModalP
               </div>
             </div>
 
-            {/* Target Type: Personal vs Project */}
             <div>
               <label className="block text-xs font-semibold text-slate-300 uppercase tracking-wider mb-2">
-                Borrowing Context
+                Request Context
               </label>
-              <div className="grid grid-cols-2 gap-2">
-                <button
-                  type="button"
-                  onClick={() => setTargetType('PERSONAL')}
-                  className={`py-2.5 px-4 rounded-xl border text-xs font-semibold transition-all ${
-                    targetType === 'PERSONAL'
-                      ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300 shadow-sm'
-                      : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  Individual Prototyping
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setTargetType('PROJECT')}
-                  className={`py-2.5 px-4 rounded-xl border text-xs font-semibold transition-all ${
-                    targetType === 'PROJECT'
-                      ? 'bg-indigo-600/20 border-indigo-500 text-indigo-300 shadow-sm'
-                      : 'bg-slate-950/40 border-slate-800 text-slate-400 hover:text-slate-200'
-                  }`}
-                >
-                  Deep-Tech Project Team
-                </button>
+              <div className="py-2.5 px-4 rounded-xl border border-slate-800 bg-slate-950/40 text-xs text-slate-300">
+                Personal request
               </div>
             </div>
 

@@ -1,5 +1,6 @@
-import { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User } from '../types';
+import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import type { User } from '../types';
+import { api, setCsrfToken } from '../lib/api';
 
 interface AuthContextType {
   user: User | null;
@@ -14,52 +15,38 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 
-  const fetchCurrentUser = async () => {
-    try {
-      const res = await fetch('/api/v1/auth/me');
-      if (res.ok) {
-        const data = await res.json();
-        setUser(data);
-      } else {
-        setUser(null);
-      }
-    } catch {
-      setUser(null);
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
   useEffect(() => {
-    fetchCurrentUser();
+    api<User & { csrfToken: string }>('/auth/me')
+      .then((current) => {
+        setCsrfToken(current.csrfToken);
+        setUser(current);
+      })
+      .catch(() => {
+        setCsrfToken(null);
+        setUser(null);
+      })
+      .finally(() => setIsLoading(false));
   }, []);
 
-  const login = async (collegeId: string, password: string) => {
-    const res = await fetch('/api/v1/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ collegeId, password }),
-    });
+  const value = useMemo<AuthContextType>(() => ({
+    user,
+    isLoading,
+    login: async (collegeId, password) => {
+      const result = await api<{ user: User; csrfToken: string }>('/auth/login', {
+        method: 'POST',
+        body: JSON.stringify({ collegeId, password }),
+      });
+      setCsrfToken(result.csrfToken);
+      setUser(result.user);
+    },
+    logout: async () => {
+      await api('/auth/logout', { method: 'POST' });
+      setCsrfToken(null);
+      setUser(null);
+    },
+  }), [user, isLoading]);
 
-    if (!res.ok) {
-      const err = await res.json();
-      throw new Error(err.error?.message || 'Invalid credentials');
-    }
-
-    const data = await res.json();
-    setUser(data.user);
-  };
-
-  const logout = async () => {
-    await fetch('/api/v1/auth/logout', { method: 'POST' });
-    setUser(null);
-  };
-
-  return (
-    <AuthContext.Provider value={{ user, isLoading, login, logout }}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {

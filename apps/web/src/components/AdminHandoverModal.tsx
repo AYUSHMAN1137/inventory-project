@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { EquipmentRequest } from '../types';
-import { Check, X, AlertCircle, ArrowRight, PackageCheck, User, Calendar } from 'lucide-react';
+import { AlertCircle, PackageCheck } from 'lucide-react';
+import { api } from '../lib/api';
 
 interface AdminHandoverModalProps {
   request: EquipmentRequest | null;
@@ -24,33 +25,31 @@ export function AdminHandoverModal({ request, isOpen, onClose, onSuccess }: Admi
 
     try {
       const payloadLines = request.lines
-        .filter((l) => l.approvedQty > l.issuedQty)
-        .map((l) => ({
-          requestLineId: l.id,
-          quantity: l.approvedQty - l.issuedQty,
-          unitIds: selectedUnits[l.id] || [],
-        }));
+        .filter((line) => line.approvedQty > line.issuedQty)
+        .map((line) => {
+          const unitIds = selectedUnits[line.id] ?? [];
+          return {
+            requestLineId: line.id,
+            quantity: line.approvedQty - line.issuedQty,
+            ...(unitIds.length > 0 ? { unitIds } : {}),
+          };
+        });
 
-      const res = await fetch('/api/v1/issues', {
+      await api('/issues', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           requestId: request.id,
           collectorCollegeId: collectorCollegeId || request.requester.collegeId,
           note,
+          clientCommandId: crypto.randomUUID(),
           lines: payloadLines,
         }),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.message || 'Handover failed');
-      }
-
       onSuccess();
       onClose();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Handover failed');
     } finally {
       setIsSubmitting(false);
     }

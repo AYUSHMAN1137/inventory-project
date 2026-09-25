@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { AllocationIssue } from '../types';
-import { RotateCcw, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { RotateCcw, AlertCircle } from 'lucide-react';
+import { api } from '../lib/api';
 
 interface ReturnModalProps {
   allocation: AllocationIssue | null;
@@ -33,25 +34,20 @@ export function ReturnModal({ allocation, isOpen, onClose, onSuccess }: ReturnMo
         };
       });
 
-      const res = await fetch('/api/v1/returns', {
+      await api('/returns', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           issueId: allocation.id,
           note,
+          clientCommandId: crypto.randomUUID(),
           lines: payloadLines,
         }),
       });
 
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.error?.message || 'Failed to process return');
-      }
-
       onSuccess();
       onClose();
-    } catch (err: any) {
-      setError(err.message);
+    } catch (err: unknown) {
+      setError(err instanceof Error ? err.message : 'Failed to process return');
     } finally {
       setIsSubmitting(false);
     }
