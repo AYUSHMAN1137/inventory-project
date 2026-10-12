@@ -1,5 +1,6 @@
 import express, { type Request, type Response } from 'express';
 import path from 'node:path';
+import fs from 'node:fs';
 import compression from 'compression';
 import { randomUUID } from 'node:crypto';
 import { prisma } from './db.js';
@@ -95,10 +96,17 @@ app.use('/api/v1', managementRouter);
 
 if (config.NODE_ENV === 'production') {
   const webDist = path.resolve(process.cwd(), 'apps/web/dist');
-  app.use(express.static(webDist, { index: false }));
-  app.get(/^(?!\/api\/).*/, (_req: Request, res: Response) => {
-    res.sendFile(path.join(webDist, 'index.html'));
-  });
+  const indexHtml = path.join(webDist, 'index.html');
+  if (fs.existsSync(indexHtml)) {
+    app.use(express.static(webDist, { index: false }));
+    app.get(/^(?!\/api\/).*/, (_req: Request, res: Response) => {
+      res.sendFile(indexHtml);
+    });
+  } else {
+    app.get('/', (_req: Request, res: Response) => {
+      res.json({ status: 'ok', service: 'Deep-Tech Lab Inventory API' });
+    });
+  }
 }
 
 // Liveness & Readiness Probes
