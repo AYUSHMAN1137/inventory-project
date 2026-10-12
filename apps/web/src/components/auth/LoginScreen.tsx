@@ -29,6 +29,19 @@ export function LoginScreen() {
     }
   }
 
+  async function handleQuickLogin(id: string, pass: string = 'Password@123') {
+    setCollegeId(id);
+    setPassword(pass);
+    setBusy(true);
+    try {
+      await login(id, pass);
+    } catch {
+      /* error surfaced via context */
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="grid min-h-full lg:grid-cols-2">
       {/* ------------------------------------------------ Brand panel */}
@@ -162,15 +175,54 @@ export function LoginScreen() {
           </form>
 
           {DEMO_HINT && (
-            <div className="mt-8 rounded-lg border bg-[var(--bg-subtle)] p-3">
-              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-[var(--text-muted)]">
-                Local setup reference
+            <div className="mt-8 rounded-lg border border-slate-200 bg-[var(--bg-subtle)] p-3.5 shadow-xs">
+              <div className="flex items-center justify-between">
+                <p className="text-xs font-bold uppercase tracking-wider text-[var(--text-muted)]">
+                  One-Click Demo Logins
+                </p>
+                <span className="rounded bg-teal-100 px-1.5 py-0.5 text-[10px] font-semibold text-teal-800">
+                  Quick Access
+                </span>
+              </div>
+              <p className="mt-1 text-xs text-[var(--text-muted)]">
+                Click any profile to sign in instantly with seeded credentials:
               </p>
-              <p className="text-xs leading-relaxed text-[var(--text-muted)]">
-                Seeded accounts are listed in the terminal output of{' '}
-                <span className="mono">npm run prisma:seed --workspace=apps/api</span>. Accounts created by
-                an admin are issued a temporary password and must change it on first sign-in.
-              </p>
+
+              <div className="mt-3 space-y-2">
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => handleQuickLogin('ADMIN001', 'Password@123')}
+                  className="group flex w-full items-center justify-between rounded-lg border border-teal-200 bg-white p-2.5 text-left transition hover:border-teal-500 hover:bg-teal-50/60 hover:shadow-xs"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-slate-800 group-hover:text-teal-900">
+                      Dr. R. K. Verma <span className="font-normal text-teal-600">(Admin)</span>
+                    </p>
+                    <p className="mono text-[11px] text-slate-500">ADMIN001 · Password@123</p>
+                  </div>
+                  <span className="shrink-0 rounded bg-teal-600 px-2.5 py-1 text-[11px] font-medium text-white group-hover:bg-teal-700">
+                    Login →
+                  </span>
+                </button>
+
+                <button
+                  type="button"
+                  disabled={busy}
+                  onClick={() => handleQuickLogin('2024BCSE042', 'Password@123')}
+                  className="group flex w-full items-center justify-between rounded-lg border border-slate-200 bg-white p-2.5 text-left transition hover:border-slate-400 hover:bg-slate-50 hover:shadow-xs"
+                >
+                  <div className="min-w-0">
+                    <p className="text-xs font-semibold text-slate-800">
+                      Ayush Sharma <span className="font-normal text-slate-500">(Student)</span>
+                    </p>
+                    <p className="mono text-[11px] text-slate-500">2024BCSE042 · Password@123</p>
+                  </div>
+                  <span className="shrink-0 rounded bg-slate-700 px-2.5 py-1 text-[11px] font-medium text-white group-hover:bg-slate-800">
+                    Login →
+                  </span>
+                </button>
+              </div>
             </div>
           )}
         </div>
