@@ -5,8 +5,16 @@
 - Node.js 22 LTS
 - PostgreSQL 16+
 - Same-origin HTTPS reverse proxy
-- Required variables: `DATABASE_URL`, `APP_ORIGIN`, `NODE_ENV=production`
-- Never place credentials in source control. Use the deployment platform's secret store.
+- Required variables: `DATABASE_URL`, `APP_ORIGIN`, `SESSION_SECRET`, `NODE_ENV=production`
+- `SESSION_SECRET` must be **at least 32 characters** and unique per environment. Generate one with
+  `node -e "console.log(require('crypto').randomBytes(48).toString('base64url'))"` and store it in the
+  platform's secret manager — never in source control.
+- `LOG_LEVEL` (`fatal` | `error` | `warn` | `info` | `debug` | `trace`) controls verbosity. Use `info` or
+  `warn` in production. Logs are JSON lines, one object per event, each carrying a `requestId`.
+- The process refuses to start if the configuration is invalid — see [apps/api/src/env.ts](../apps/api/src/env.ts).
+  A fast crash at deploy time is deliberate; it replaces a silently misconfigured service in production.
+- Never place credentials in source control. Use the deployment platform's secret store. `.env.example`
+  documents every supported variable and is the only env file allowed in the repository.
 
 ## Deploy
 
@@ -17,6 +25,16 @@
 5. Start: `docker compose up -d`.
 6. Verify `GET /api/v1/health/live` and `GET /api/v1/health/ready` return HTTP 200.
 7. Sign in with a separately provisioned admin account and run a receive → request → approve → issue → return smoke test.
+8. Confirm the admin is forced through `PATCH /api/v1/auth/password` on first sign-in (`mustChangePassword`
+   is `true` on every admin-provisioned account), and that a mutation returns
+   `403 PASSWORD_CHANGE_REQUIRED` until that change completes.
+
+## Shutdown and restarts
+
+The API handles `SIGTERM` and `SIGINT`: it stops accepting connections, waits for in-flight requests,
+disconnects Prisma and exits. A forced exit happens 10 seconds after the signal if connections do not
+drain. `unhandledRejection` and `uncaughtException` are logged with a stack trace before exit, so a
+container orchestrator restarts a clean process instead of leaving a broken one alive.
 
 The application container must sit behind TLS in production. Do not expose PostgreSQL publicly.
 

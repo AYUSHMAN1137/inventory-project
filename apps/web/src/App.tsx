@@ -1,55 +1,133 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
-import { AlertTriangle, Archive, Boxes, ChevronRight, ClipboardList, History, LayoutDashboard, LogOut, MapPin, Menu, PackageCheck, PackagePlus, RotateCcw, Search, Shapes, X } from 'lucide-react';
+import { useState } from 'react';
+import { Navigate, Route, Routes } from 'react-router-dom';
 import { useAuth } from './context/AuthContext';
-import { api } from './lib/api';
-import type { AllocationIssue, DashboardMetrics, EquipmentRequest, InventoryItem, Kit, LocationHierarchy, StockMovement } from './types';
-import { LoginModal } from './components/LoginModal';
-import { RequestModal } from './components/RequestModal';
-import { AdminHandoverModal } from './components/AdminHandoverModal';
-import { ReturnModal } from './components/ReturnModal';
-import { StockReceiptModal } from './components/StockReceiptModal';
+import { LoginScreen } from './components/auth/LoginScreen';
+import { ChangePasswordScreen } from './components/auth/ChangePasswordScreen';
+import { Sidebar } from './components/layout/Sidebar';
+import { Topbar } from './components/layout/Topbar';
+import { LoadingState } from './components/common/ui';
 
-type View = 'DASHBOARD' | 'INVENTORY' | 'KITS' | 'REQUESTS' | 'ISSUES' | 'RETURNS' | 'LOCATIONS' | 'HISTORY';
-type LowStock = { id: string; name: string; threshold: number; current: number };
-const adminNav: Array<[View, string, ReactNode]> = [['DASHBOARD','Dashboard',<LayoutDashboard size={18}/>],['REQUESTS','Request queue',<ClipboardList size={18}/>],['ISSUES','Issue desk',<PackageCheck size={18}/>],['RETURNS','Return desk',<RotateCcw size={18}/>],['INVENTORY','Inventory',<Boxes size={18}/>],['KITS','Kits',<Shapes size={18}/>],['LOCATIONS','Locations',<MapPin size={18}/>],['HISTORY','Stock history',<History size={18}/>]];
-const studentNav: Array<[View, string, ReactNode]> = [['INVENTORY','Browse inventory',<Search size={18}/>],['KITS','Lab kits',<Shapes size={18}/>],['REQUESTS','My requests',<ClipboardList size={18}/>],['RETURNS','Borrowed items',<RotateCcw size={18}/>]];
+import { DashboardView } from './views/DashboardView';
+import { CatalogView } from './views/CatalogView';
+import { KitsView } from './views/KitsView';
+import { LocationsView } from './views/LocationsView';
+import { CartView } from './views/CartView';
+import { RequestsQueueView } from './views/RequestsQueueView';
+import { MyRequestsView } from './views/MyRequestsView';
+import { MyLoansView } from './views/MyLoansView';
+import { HandoverView } from './views/HandoverView';
+import { ReturnsView } from './views/ReturnsView';
+import { IntakeView } from './views/IntakeView';
+import { LedgerView } from './views/LedgerView';
+import { PeopleView } from './views/PeopleView';
 
-function Status({ value }: { value: string }) { const tone=value.includes('APPROVED')||value==='FULFILLED'?'success':value==='PENDING'||value==='PARTIALLY_ISSUED'?'warning':value==='REJECTED'?'danger':'neutral'; return <span className={`status status-${tone}`}>{value.replaceAll('_',' ').toLowerCase()}</span>; }
-function Empty({ title, text }: { title: string; text: string }) { return <div className="empty"><Archive size={28}/><strong>{title}</strong><span>{text}</span></div>; }
-function PageTitle({ title, description, action }: { title: string; description: string; action?: ReactNode }) { return <div className="page-title"><div><h1>{title}</h1><p>{description}</p></div>{action}</div>; }
-function Metric({label,value,hint,urgent=false}:{label:string;value:number;hint:string;urgent?:boolean}) { return <article className={`metric ${urgent?'metric-urgent':''}`}><span>{label}</span><strong>{value}</strong><small>{hint}</small></article>; }
-
-export default function App() {
-  const { user, isLoading, logout } = useAuth();
-  const [loginOpen,setLoginOpen]=useState(false),[mobileNav,setMobileNav]=useState(false),[loading,setLoading]=useState(false);
-  const [view,setView]=useState<View>('INVENTORY'),[error,setError]=useState(''),[search,setSearch]=useState(''),[category,setCategory]=useState('ALL');
-  const [nature,setNature]=useState<'ALL'|'RETURNABLE'|'CONSUMABLE'>('ALL');
-  const [items,setItems]=useState<InventoryItem[]>([]),[requests,setRequests]=useState<EquipmentRequest[]>([]),[allocations,setAllocations]=useState<AllocationIssue[]>([]),[kits,setKits]=useState<Kit[]>([]),[locations,setLocations]=useState<LocationHierarchy[]>([]),[movements,setMovements]=useState<StockMovement[]>([]);
-  const [metrics,setMetrics]=useState<DashboardMetrics|null>(null),[lowStock,setLowStock]=useState<LowStock[]>([]);
-  const [requestItem,setRequestItem]=useState<InventoryItem|null>(null),[handoverRequest,setHandoverRequest]=useState<EquipmentRequest|null>(null),[returnAllocation,setReturnAllocation]=useState<AllocationIssue|null>(null),[stockReceiptOpen,setStockReceiptOpen]=useState(false);
-
-  const loadAll=async()=>{if(!user)return;setLoading(true);setError('');try{const [a,b,c,d,e,f]=await Promise.all([api<{data:InventoryItem[]}>('/items'),api<{data:EquipmentRequest[]}>('/requests'),api<{data:AllocationIssue[]}>('/allocations'),api<{data:Kit[]}>('/kits'),api<LocationHierarchy[]>('/locations'),api<{metrics:DashboardMetrics;lowStockItems:LowStock[]}>('/dashboard/stats')]);setItems(a.data);setRequests(b.data);setAllocations(c.data);setKits(d.data);setLocations(e);setMetrics(f.metrics);setLowStock(f.lowStockItems);if(user.role==='ADMIN')setMovements((await api<{data:StockMovement[]}>('/stock-movements')).data)}catch(cause){setError(cause instanceof Error?cause.message:'Unable to load laboratory data.')}finally{setLoading(false)}};
-  useEffect(()=>{if(user){setView(user.role==='ADMIN'?'DASHBOARD':'INVENTORY');void loadAll()}},[user]);
-  const categories=useMemo(()=>[...new Set(items.map(i=>i.categoryName))].sort(),[items]);
-  const visibleItems=useMemo(()=>items.filter(i=>{const q=search.trim().toLowerCase();return(nature==='ALL'||i.nature===nature)&&(category==='ALL'||i.categoryName===category)&&(!q||[i.name,i.model,i.categoryName,i.defaultLocation].some(v=>v?.toLowerCase().includes(q)))}),[items,search,nature,category]);
-  const activeAllocations=allocations.filter(a=>!a.isFullyReturned),readyForIssue=requests.filter(r=>['APPROVED','PARTIALLY_APPROVED'].includes(r.decisionStatus)&&r.fulfilmentStatus!=='FULFILLED');
-  if(isLoading)return <div className="loading-page"><span className="spinner"/>Loading lab inventory…</div>;
-  if(!user)return <><LoginPage onLogin={()=>setLoginOpen(true)}/><LoginModal isOpen={loginOpen} onClose={()=>setLoginOpen(false)}/></>;
-  const navItems=user.role==='ADMIN'?adminNav:studentNav,navigate=(next:View)=>{setView(next);setMobileNav(false)},refresh=()=>void loadAll();
-  const decide=async(request:EquipmentRequest,status:'APPROVED'|'REJECTED')=>{try{await api(`/requests/${request.id}/decision`,{method:'POST',body:JSON.stringify({status,decisionReason:status==='APPROVED'?'Approved by lab administrator':'Not approved',lines:request.lines.map(line=>({lineId:line.id,approvedQuantity:status==='APPROVED'?line.requestedQty:0,rejectionReason:status==='REJECTED'?'Not approved':undefined}))})});await loadAll()}catch(cause){setError(cause instanceof Error?cause.message:'Decision failed.')}};
-
-  return <div className="app-shell"><aside className={`sidebar ${mobileNav?'sidebar-open':''}`}><div className="brand"><div className="brand-mark">DT</div><div><strong>Deep-Tech Lab</strong><span>Inventory & issue system</span></div></div><div className="nav-section-label">{user.role==='ADMIN'?'Lab operations':'Student workspace'}</div><nav className="side-nav" aria-label="Primary navigation">{navItems.map(([id,label,icon])=><button key={id} className={view===id?'active':''} onClick={()=>navigate(id)}>{icon}<span>{label}</span>{id==='REQUESTS'&&user.role==='ADMIN'&&metrics?.pendingRequestsCount?<b>{metrics.pendingRequestsCount}</b>:null}</button>)}</nav><div className="sidebar-user"><div className="avatar">{user.name.split(' ').map(p=>p[0]).slice(0,2).join('')}</div><div><strong>{user.name}</strong><span>{user.collegeId} · {user.role==='ADMIN'?'Administrator':'Student'}</span></div></div></aside>{mobileNav&&<button className="nav-scrim" aria-label="Close navigation" onClick={()=>setMobileNav(false)}/>}<div className="workspace"><header className="topbar"><button className="icon-button mobile-only" aria-label="Open navigation" onClick={()=>setMobileNav(true)}><Menu size={20}/></button><div><span>{user.role==='ADMIN'?'Admin':'Student'}</span><ChevronRight size={14}/><strong>{navItems.find(([id])=>id===view)?.[1]}</strong></div><button className="signout" onClick={()=>void logout()}><LogOut size={17}/><span>Sign out</span></button></header><main className="page">{error&&<div className="error-banner" role="alert"><AlertTriangle size={18}/><span>{error}</span><button onClick={()=>setError('')}><X size={16}/></button></div>}{loading&&<div className="progress" aria-label="Refreshing data"/>}
-  {view==='DASHBOARD'&&user.role==='ADMIN'&&<Dashboard metrics={metrics} lowStock={lowStock} requests={requests} movements={movements} onNavigate={navigate}/>} {view==='INVENTORY'&&<Inventory items={visibleItems} allItems={items} categories={categories} search={search} setSearch={setSearch} nature={nature} setNature={setNature} category={category} setCategory={setCategory} admin={user.role==='ADMIN'} onRequest={setRequestItem} onReceive={()=>setStockReceiptOpen(true)}/>} {view==='KITS'&&<Kits kits={kits} items={items} onRequest={setRequestItem}/>} {view==='REQUESTS'&&<Requests requests={requests} admin={user.role==='ADMIN'} onApprove={decide} onIssue={setHandoverRequest}/>} {view==='ISSUES'&&user.role==='ADMIN'&&<IssueDesk requests={readyForIssue} onIssue={setHandoverRequest}/>} {view==='RETURNS'&&<Allocations allocations={activeAllocations} admin={user.role==='ADMIN'} onReturn={setReturnAllocation}/>} {view==='LOCATIONS'&&user.role==='ADMIN'&&<Locations locations={locations}/>} {view==='HISTORY'&&user.role==='ADMIN'&&<HistoryView movements={movements}/>}</main></div>
-  <RequestModal item={requestItem} isOpen={!!requestItem} onClose={()=>setRequestItem(null)} onSuccess={()=>{setRequestItem(null);navigate('REQUESTS');refresh()}}/><AdminHandoverModal request={handoverRequest} isOpen={!!handoverRequest} onClose={()=>setHandoverRequest(null)} onSuccess={()=>{setHandoverRequest(null);navigate('RETURNS');refresh()}}/><ReturnModal allocation={returnAllocation} isOpen={!!returnAllocation} onClose={()=>setReturnAllocation(null)} onSuccess={refresh}/><StockReceiptModal items={items} locations={locations} isOpen={stockReceiptOpen} onClose={()=>setStockReceiptOpen(false)} onSuccess={refresh}/></div>;
+function AdminOnly({ children }: { children: React.ReactNode }) {
+  const { isAdmin } = useAuth();
+  return isAdmin ? <>{children}</> : <Navigate to="/" replace />;
 }
 
-function LoginPage({onLogin}:{onLogin:()=>void}){return <main className="login-page"><section className="login-story"><div className="brand brand-dark"><div className="brand-mark">DT</div><div><strong>Deep-Tech Innovation Centre</strong><span>5th Floor Robotics Lab</span></div></div><div className="story-copy"><p className="eyebrow">Shared equipment. Clear accountability.</p><h1>Build more. Search less.</h1><p>Find components, request equipment, record handovers, and know where every tracked item belongs.</p><ul><li>Live availability across lab storage</li><li>Personal and project request tracking</li><li>Auditable stock and equipment history</li></ul></div></section><section className="login-action"><div><p className="eyebrow">Internal access</p><h2>Lab inventory</h2><p>Use your college ID and password to continue.</p><button className="primary-action" onClick={onLogin}>Sign in</button><small>Accounts are created by the lab administrator.</small></div></section></main>}
-function Dashboard({metrics,lowStock,requests,movements,onNavigate}:{metrics:DashboardMetrics|null;lowStock:LowStock[];requests:EquipmentRequest[];movements:StockMovement[];onNavigate:(v:View)=>void}){const pending=requests.filter(r=>r.decisionStatus==='PENDING').slice(0,5);return <><PageTitle title="Lab overview" description="What needs attention across the lab today." action={<button className="primary-action" onClick={()=>onNavigate('ISSUES')}>Open issue desk</button>}/><section className="metric-grid"><Metric label="Pending requests" value={metrics?.pendingRequestsCount??0} hint="Waiting for review" urgent={(metrics?.pendingRequestsCount??0)>0}/><Metric label="Ready for handover" value={requests.filter(r=>['APPROVED','PARTIALLY_APPROVED'].includes(r.decisionStatus)&&r.fulfilmentStatus!=='FULFILLED').length} hint="Approved, not fully issued"/><Metric label="Allocated units" value={metrics?.allocatedUnits??0} hint="Currently outside storage"/><Metric label="Low stock" value={metrics?.lowStockCount??0} hint="At or below threshold" urgent={(metrics?.lowStockCount??0)>0}/></section><div className="two-column"><section className="panel"><div className="panel-heading"><div><h2>Requests needing review</h2><p>Oldest requests should be handled first.</p></div><button className="text-button" onClick={()=>onNavigate('REQUESTS')}>View all</button></div>{pending.length?<RequestTable requests={pending} actionLabel="Review" onAction={()=>onNavigate('REQUESTS')}/>:<Empty title="Queue is clear" text="No request is waiting for review."/>}</section><aside className="stack"><section className="panel"><div className="panel-heading"><div><h2>Low stock</h2><p>Items that may need intake.</p></div></div>{lowStock.length?lowStock.slice(0,4).map(i=><div className="list-row" key={i.id}><div><strong>{i.name}</strong><span>Threshold {i.threshold}</span></div><b className="warning-text">{i.current} left</b></div>):<Empty title="Stock levels look good" text="No item is below its threshold."/>}</section><section className="panel"><div className="panel-heading"><div><h2>Recent stock activity</h2><p>Latest verified movements.</p></div></div>{movements.slice(0,4).map(m=><div className="activity-row" key={m.id}><i/><div><strong>{m.item.name}</strong><span>{m.type.toLowerCase()} · {m.actor.name}</span></div><time>{new Date(m.createdAt).toLocaleDateString()}</time></div>)}</section></aside></div></>}
-function Inventory({items,allItems,categories,search,setSearch,nature,setNature,category,setCategory,admin,onRequest,onReceive}:{items:InventoryItem[];allItems:InventoryItem[];categories:string[];search:string;setSearch:(v:string)=>void;nature:'ALL'|'RETURNABLE'|'CONSUMABLE';setNature:(v:'ALL'|'RETURNABLE'|'CONSUMABLE')=>void;category:string;setCategory:(v:string)=>void;admin:boolean;onRequest:(i:InventoryItem)=>void;onReceive:()=>void}){return <><PageTitle title={admin?'Inventory':'Browse inventory'} description={admin?'Search stock, inspect locations, and receive new units.':'Find components available for your prototype or project.'} action={admin?<button className="primary-action" onClick={onReceive}><PackagePlus size={17}/>Receive stock</button>:undefined}/><div className="filters"><label className="search-field"><Search size={17}/><input aria-label="Search inventory" value={search} onChange={e=>setSearch(e.target.value)} placeholder="Search item, model, category or location"/></label><select aria-label="Category" value={category} onChange={e=>setCategory(e.target.value)}><option value="ALL">All categories</option>{categories.map(v=><option key={v}>{v}</option>)}</select><select aria-label="Item type" value={nature} onChange={e=>setNature(e.target.value as typeof nature)}><option value="ALL">All item types</option><option value="RETURNABLE">Returnable</option><option value="CONSUMABLE">Consumable</option></select><span className="result-count">{items.length} of {allItems.length} items</span></div>{items.length?<section className="catalog-grid">{items.map(item=><article className="item-card" key={item.id}><div className="item-card-head"><div><span className="category">{item.categoryName}</span><h2>{item.name}</h2><p>{item.model||'Standard lab component'}</p></div><Status value={item.nature}/></div><p className="description">{item.description||'Available for approved lab and project work.'}</p><div className="item-meta"><span><MapPin size={14}/>{item.defaultLocation}</span><span>{item.trackingMode==='SERIALIZED'?'Asset-tag tracked':'Quantity tracked'}</span></div><div className="stock-row"><div><strong className={item.isLowStock?'warning-text':'success-text'}>{item.availableQuantity} {item.unitOfMeasure}</strong><span>{item.isLowStock?'Low stock':'available now'}</span></div>{!admin&&<button className="secondary-action" disabled={item.availableQuantity<1} onClick={()=>onRequest(item)}>Add to request</button>}</div></article>)}</section>:<Empty title="No matching inventory" text="Change the search or filters and try again."/>}</>}
-function Kits({kits,items,onRequest}:{kits:Kit[];items:InventoryItem[];onRequest:(i:InventoryItem)=>void}){return <><PageTitle title="Lab kits" description="Reusable bundles that expand into individually tracked request lines."/>{kits.length?<section className="catalog-grid">{kits.map(kit=><article className="item-card" key={kit.id}><div className="item-card-head"><div><span className="category">Prepared kit</span><h2>{kit.name}</h2></div><Shapes size={20}/></div><p className="description">{kit.description}</p><div className="kit-list">{kit.items.map(e=><div key={e.id}><span>{e.item.name}</span><b>{e.quantity} {e.item.unitOfMeasure}</b></div>)}</div><button className="secondary-action full" onClick={()=>{const first=items.find(i=>i.id===kit.items[0]?.item.id);if(first)onRequest(first)}}>Start kit request</button></article>)}</section>:<Empty title="No kits configured" text="An administrator can create reusable kit templates."/>}</>}
-function Requests({requests,admin,onApprove,onIssue}:{requests:EquipmentRequest[];admin:boolean;onApprove:(r:EquipmentRequest,s:'APPROVED'|'REJECTED')=>void;onIssue:(r:EquipmentRequest)=>void}){return <><PageTitle title={admin?'Request queue':'My requests'} description={admin?'Review quantities before approving and issuing equipment.':'Track approval and collection progress.'}/><section className="panel">{requests.length?<RequestTable requests={requests} actionLabel={admin?'Review':'View'} onAction={r=>{if(admin&&r.decisionStatus==='PENDING')void onApprove(r,'APPROVED');else if(admin&&['APPROVED','PARTIALLY_APPROVED'].includes(r.decisionStatus))onIssue(r)}} secondaryAction={admin?r=>r.decisionStatus==='PENDING'?<button className="danger-link" onClick={()=>void onApprove(r,'REJECTED')}>Reject</button>:null:undefined}/>:<Empty title="No requests yet" text="Requested equipment will appear here."/>}</section></>}
-function RequestTable({requests,actionLabel,onAction,secondaryAction}:{requests:EquipmentRequest[];actionLabel:string;onAction:(r:EquipmentRequest)=>void;secondaryAction?:(r:EquipmentRequest)=>ReactNode}){return <div className="table-wrap"><table className="data-table"><thead><tr><th>Request</th><th>Student / project</th><th>Items</th><th>Submitted</th><th>Status</th><th>Action</th></tr></thead><tbody>{requests.map(r=><tr key={r.id}><td><strong>#{r.id.slice(0,8).toUpperCase()}</strong><span>{r.targetType.toLowerCase()}</span></td><td><strong>{r.project?.name||r.requester.name}</strong><span>{r.requester.collegeId}</span></td><td>{r.lines.slice(0,2).map(l=><div key={l.id}>{l.item.name} × {l.requestedQty}</div>)}</td><td>{new Date(r.createdAt).toLocaleDateString()}</td><td><Status value={r.decisionStatus}/><span>{r.fulfilmentStatus.replaceAll('_',' ').toLowerCase()}</span></td><td><div className="row-actions"><button className="table-action" onClick={()=>onAction(r)}>{['APPROVED','PARTIALLY_APPROVED'].includes(r.decisionStatus)?'Issue':actionLabel}</button>{secondaryAction?.(r)}</div></td></tr>)}</tbody></table></div>}
-function IssueDesk({requests,onIssue}:{requests:EquipmentRequest[];onIssue:(r:EquipmentRequest)=>void}){return <><PageTitle title="Issue desk" description="Verify the collector, select physical units, and record handover."/>{requests.length?<section className="panel"><RequestTable requests={requests} actionLabel="Issue" onAction={onIssue}/></section>:<Empty title="Nothing ready for handover" text="Approved requests will appear here."/>}</>}
-function Allocations({allocations,admin,onReturn}:{allocations:AllocationIssue[];admin:boolean;onReturn:(a:AllocationIssue)=>void}){return <><PageTitle title={admin?'Return desk':'Borrowed items'} description={admin?'Check equipment back in and record its condition.':'Items currently assigned to you or your projects.'}/>{allocations.length?<div className="allocation-list">{allocations.map(a=><article className="panel allocation" key={a.id}><div><span className="category">Issue #{a.id.slice(0,8).toUpperCase()}</span><h2>{a.student.name}</h2><p>{a.project?.name||'Personal issue'} · {new Date(a.createdAt).toLocaleDateString()}</p></div><div>{a.lines.filter(l=>l.quantity>l.returnedQty).map(l=><p key={l.id}><b>{l.requestLine?.item.name}</b> · {l.quantity-l.returnedQty} outstanding {l.units.map(u=><code key={u.id}>{u.unit.assetCode}</code>)}</p>)}</div>{admin&&<button className="secondary-action" onClick={()=>onReturn(a)}>Process return</button>}</article>)}</div>:<Empty title="No outstanding items" text={admin?'All returnable equipment has been checked in.':'You have no equipment to return.'}/>}</>}
-function Locations({locations}:{locations:LocationHierarchy[]}){return <><PageTitle title="Locations" description="The physical hierarchy for rooms, cabinets, shelves, drawers, and bins."/><section className="panel location-list">{locations.map(l=><div className="location-row" key={l.id}><MapPin size={17}/><div><strong>{l.name}</strong><span>{l.type.toLowerCase()} {l.parent?`· inside ${l.parent.name}`:''}</span></div><b>{l.children?.length??0} sub-locations</b></div>)}</section></>}
-function HistoryView({movements}:{movements:StockMovement[]}){return <><PageTitle title="Stock history" description="Append-only record of receiving, issue, return, transfer, and adjustment activity."/><section className="panel"><div className="table-wrap"><table className="data-table"><thead><tr><th>Date & time</th><th>Movement</th><th>Item</th><th>Quantity / asset</th><th>Operator</th><th>Reason</th></tr></thead><tbody>{movements.map(m=><tr key={m.id}><td>{new Date(m.createdAt).toLocaleString()}</td><td><Status value={m.type}/></td><td><strong>{m.item.name}</strong></td><td>{m.unit?.assetCode??`${m.quantity}`}</td><td>{m.actor.name}<span>{m.actor.collegeId}</span></td><td>{m.reason||'—'}</td></tr>)}</tbody></table></div></section></>}
+function Shell() {
+  const { user, loading } = useAuth();
+  const [search, setSearch] = useState('');
+  const [navOpen, setNavOpen] = useState(false);
+
+  if (loading) {
+    return (
+      <div className="flex h-full items-center justify-center">
+        <LoadingState label="Restoring session…" />
+      </div>
+    );
+  }
+
+  if (!user) return <LoginScreen />;
+
+  // Admin-provisioned accounts start on a temporary password. Nothing else is
+  // reachable until it is replaced (the API enforces the same rule).
+  if (user.mustChangePassword) return <ChangePasswordScreen />;
+
+  return (
+    <div className="flex h-full">
+      {/* Sidebar: fixed on desktop, slide-over drawer on mobile. */}
+      <div className="hidden lg:block">
+        <Sidebar />
+      </div>
+
+      {navOpen && (
+        <div className="fixed inset-0 z-40 flex lg:hidden" data-testid="mobile-nav">
+          <div className="absolute inset-0 bg-slate-900/50" onClick={() => setNavOpen(false)} aria-hidden />
+          <div className="relative z-10 h-full">
+            <Sidebar onNavigate={() => setNavOpen(false)} />
+          </div>
+        </div>
+      )}
+
+      <div className="flex min-w-0 flex-1 flex-col">
+        <Topbar onSearch={setSearch} onToggleSidebar={() => setNavOpen(true)} />
+        <main className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6">
+          <Routes>
+            <Route path="/" element={<DashboardView />} />
+            <Route path="/catalog" element={<CatalogView search={search} />} />
+            <Route path="/kits" element={<KitsView />} />
+            <Route path="/locations" element={<LocationsView />} />
+            <Route path="/cart" element={<CartView />} />
+            <Route path="/my-requests" element={<MyRequestsView />} />
+            <Route path="/my-loans" element={<MyLoansView />} />
+            <Route
+              path="/requests"
+              element={
+                <AdminOnly>
+                  <RequestsQueueView />
+                </AdminOnly>
+              }
+            />
+            <Route
+              path="/handover"
+              element={
+                <AdminOnly>
+                  <HandoverView />
+                </AdminOnly>
+              }
+            />
+            <Route
+              path="/returns"
+              element={
+                <AdminOnly>
+                  <ReturnsView />
+                </AdminOnly>
+              }
+            />
+            <Route
+              path="/intake"
+              element={
+                <AdminOnly>
+                  <IntakeView />
+                </AdminOnly>
+              }
+            />
+            <Route
+              path="/ledger"
+              element={
+                <AdminOnly>
+                  <LedgerView />
+                </AdminOnly>
+              }
+            />
+            <Route
+              path="/people"
+              element={
+                <AdminOnly>
+                  <PeopleView />
+                </AdminOnly>
+              }
+            />
+            <Route path="*" element={<Navigate to="/" replace />} />
+          </Routes>
+        </main>
+      </div>
+    </div>
+  );
+}
+
+export default function App() {
+  return <Shell />;
+}

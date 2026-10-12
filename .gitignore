@@ -1,10 +1,37 @@
+# dependencies / build output
 node_modules
 dist
+
+# environment — never commit real values
 .env
-*.log
-.DS_Store
+.env.*
+!.env.example
+
+# local databases (regenerable via `npm run prisma:seed --workspace=apps/api`)
+*.db
+*.db-journal
 *.sqlite
 *.sqlite-journal
-coverage
+apps/api/prisma/*.db
+
+# logs
+*.log
+npm-debug.log*
+
+# compiled Prisma seed output — seed.ts is the source of truth
+apps/api/prisma/seed.js
+apps/api/prisma/seed.d.ts
+apps/api/prisma/seed.js.map
+apps/api/prisma/seed.d.ts.map
+
+# test / tooling artefacts
 test-results
 playwright-report
+coverage
+blob-report
+.playwright
+
+# OS noise
+.DS_Store
+Thumbs.db
+cookies.txt

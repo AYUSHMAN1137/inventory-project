@@ -3,8 +3,6 @@ setlocal EnableExtensions
 cd /d "%~dp0"
 title Deep-Tech Lab Inventory
 
-set "DATABASE_URL=file:./dev.db"
-
 where node >nul 2>nul || (
   echo [ERROR] Node.js is not installed or not available in PATH.
   pause
@@ -24,18 +22,37 @@ if not exist "node_modules\" (
 )
 
 echo [SETUP] Preparing the local SQLite database...
-if not exist "node_modules\.prisma\client\query_engine-windows.dll.node" (
-  call npx prisma generate --schema apps/api/prisma/schema.prisma
-  if errorlevel 1 goto :fail
-)
-call npx prisma db push --schema apps/api/prisma/schema.prisma --skip-generate
-if errorlevel 1 goto :fail
 
-if not exist "apps\api\prisma\dev.db" (
-  echo [SETUP] Adding initial lab data...
-  call npm run prisma:seed --workspace=apps/api
-  if errorlevel 1 goto :fail
+rem Prisma finds DATABASE_URL in the nearest .env and resolves a relative
+rem sqlite path from the current directory. So every Prisma command must run
+rem from apps\api — running it from the repo root fails with error P1012.
+pushd apps\api
+
+if not exist "..\..\node_modules\.prisma\client\query_engine-windows.dll.node" (
+  echo [SETUP] Generating Prisma client...
+  call npx prisma generate --schema prisma/schema.prisma
+  if errorlevel 1 (
+    popd
+    goto :fail
+  )
 )
+
+call npx prisma db push --schema prisma/schema.prisma --skip-generate
+if errorlevel 1 (
+  popd
+  goto :fail
+)
+
+if not exist "prisma\dev.db" (
+  echo [SETUP] Adding initial lab data...
+  call npx tsx prisma/seed.ts
+  if errorlevel 1 (
+    popd
+    goto :fail
+  )
+)
+
+popd
 
 echo.
 echo ===============================================================
@@ -43,9 +60,11 @@ echo  Deep-Tech Lab Inventory System is starting...
 echo  Local Web URL:  http://localhost:5173
 echo  API URL:        http://localhost:4000
 echo.
-echo  Default Login Credentials:
-echo   - Admin:   ADMIN001    ^| Password: Password@123
-echo   - Student: 2024BCSE042 ^| Password: Password@123
+echo  Default Login Credentials (password: Password@123):
+echo   - Admin:   ADMIN001        Faculty In-Charge
+echo   - Student: 2024BCSE042     Ayush Sharma
+echo              2024BCSE017     Sara Khan
+echo              2024BEEE088     Rohan Mehta
 echo.
 echo  Closing this window will STOP all servers immediately.
 echo ===============================================================

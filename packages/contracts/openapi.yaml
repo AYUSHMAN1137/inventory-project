@@ -6,7 +6,6 @@ info:
 servers:
   - url: /api/v1
     description: Current host API server
-
 paths:
   /health/live:
     get:
@@ -25,7 +24,6 @@ paths:
                   timestamp:
                     type: string
                     format: date-time
-
   /health/ready:
     get:
       summary: Readiness probe
@@ -40,7 +38,6 @@ paths:
                   status:
                     type: string
                     example: ready
-
   /auth/login:
     post:
       summary: Authenticate user and create session
@@ -56,7 +53,7 @@ paths:
               properties:
                 collegeId:
                   type: string
-                  example: "2024BCSE042"
+                  example: 2024BCSE042
                 password:
                   type: string
                   format: password
@@ -65,7 +62,6 @@ paths:
           description: Successfully authenticated
         '401':
           description: Invalid credentials
-
   /auth/me:
     get:
       summary: Get currently authenticated user profile
@@ -76,14 +72,323 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/UserProfile'
-
   /auth/logout:
     post:
       summary: Invalidate user session
       responses:
         '200':
           description: Logged out successfully
-
+  /auth/password:
+    patch:
+      summary: Change the signed-in user's password
+      description: |
+        Required to leave the `mustChangePassword` state an admin-provisioned
+        account starts in. Revokes every other session on success.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ChangePasswordInput'
+      responses:
+        '200':
+          description: Password updated; a fresh session cookie is issued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  user:
+                    $ref: '#/components/schemas/UserProfile'
+                  csrfToken:
+                    type: string
+        '400':
+          description: Validation error
+        '401':
+          description: Current password is incorrect
+        '403':
+          description: CSRF token missing or invalid
+        '429':
+          description: Too many attempts
+  /items/{id}:
+    get:
+      summary: Get a single inventory item with units and balances
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: The item
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Item'
+        '404':
+          description: Item not found
+  /categories:
+    get:
+      summary: List all categories
+      responses:
+        '200':
+          description: List of categories
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Category'
+    post:
+      summary: Create a category (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+              properties:
+                name:
+                  type: string
+                description:
+                  type: string
+      responses:
+        '201':
+          description: Created category
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Category'
+  /locations:
+    get:
+      summary: List hierarchical locations
+      responses:
+        '200':
+          description: Hierarchy of locations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: '#/components/schemas/Location'
+    post:
+      summary: Create a location (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - name
+                - type
+              properties:
+                name:
+                  type: string
+                type:
+                  $ref: '#/components/schemas/LocationType'
+                parentId:
+                  type: string
+                  nullable: true
+      responses:
+        '201':
+          description: Created location
+  /stock-receipts:
+    post:
+      summary: Receive stock into a location (Admin only)
+      description: Creates serialized units and/or increments a bulk balance.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/StockReceiptInput'
+      responses:
+        '200':
+          description: Stock received
+  /stock-movements:
+    get:
+      summary: Read the immutable stock movement ledger (Admin only)
+      parameters:
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            default: 50
+      responses:
+        '200':
+          description: Movement entries
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StockMovement'
+  /dashboard/stats:
+    get:
+      summary: Dashboard metrics, low-stock alerts and recent movements
+      responses:
+        '200':
+          description: Dashboard payload
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metrics:
+                    $ref: '#/components/schemas/DashboardMetrics'
+                  lowStockItems:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        id:
+                          type: string
+                        name:
+                          type: string
+                        threshold:
+                          type: integer
+                        current:
+                          type: integer
+                  recentMovements:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/StockMovement'
+  /allocations:
+    get:
+      summary: List current allocations
+      description: |
+        Admins see every allocation. Students see their own plus any project
+        they belong to.
+      responses:
+        '200':
+          description: Allocations with outstanding lines
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Allocation'
+  /users:
+    get:
+      summary: List managed users (Admin only)
+      responses:
+        '200':
+          description: Users
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/ManagedUser'
+    post:
+      summary: Provision a user with a temporary password (Admin only)
+      description: The created account has `mustChangePassword` set to true.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateUserInput'
+      responses:
+        '201':
+          description: Created user
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ManagedUser'
+        '409':
+          description: College ID or email already in use
+  /projects:
+    get:
+      summary: List lab projects
+      description: Students only see active projects they are a member of.
+      responses:
+        '200':
+          description: Projects
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LabProject'
+    post:
+      summary: Create a project with student members (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateProjectInput'
+      responses:
+        '201':
+          description: Created project
+  /requests/{id}/cancel:
+    post:
+      summary: Cancel a request
+      description: |
+        A student may cancel their own request while it is still PENDING and
+        nothing has been issued against it.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '200':
+          description: Request cancelled
+        '409':
+          description: Request is no longer cancellable
+  /kits:
+    get:
+      summary: List kits / packages
+      responses:
+        '200':
+          description: List of kits
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/Kit'
+    post:
+      summary: Create a kit template (Admin only)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateKitInput'
+      responses:
+        '201':
+          description: Created kit
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Kit'
+        '400':
+          description: Validation error or an unknown item was referenced
+        '409':
+          description: A kit with this name already exists
   /items:
     get:
       summary: List inventory items with filtering & search
@@ -99,25 +404,14 @@ paths:
         - name: nature
           in: query
           schema:
-            type: string
-            enum: [RETURNABLE, CONSUMABLE]
+            $ref: '#/components/schemas/ItemNature'
         - name: availableOnly
           in: query
           schema:
             type: boolean
-        - name: page
-          in: query
-          schema:
-            type: integer
-            default: 1
-        - name: pageSize
-          in: query
-          schema:
-            type: integer
-            default: 20
       responses:
         '200':
-          description: Paginated item list
+          description: Matching items
           content:
             application/json:
               schema:
@@ -129,7 +423,6 @@ paths:
                       $ref: '#/components/schemas/Item'
                   meta:
                     $ref: '#/components/schemas/PaginationMeta'
-
     post:
       summary: Create a new inventory item (Admin only)
       requestBody:
@@ -141,41 +434,29 @@ paths:
       responses:
         '201':
           description: Created item
-
-  /categories:
-    get:
-      summary: List all categories
-      responses:
-        '200':
-          description: List of categories
           content:
             application/json:
               schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Category'
-
-  /locations:
-    get:
-      summary: List hierarchical locations
-      responses:
-        '200':
-          description: Hierarchy of locations
-          content:
-            application/json:
-              schema:
-                type: array
-                items:
-                  $ref: '#/components/schemas/Location'
-
+                $ref: '#/components/schemas/Item'
   /requests:
     get:
-      summary: List requests (scoped to student or all for admin)
+      summary: List requests (scoped to the student, or all for an admin)
       responses:
         '200':
-          description: List of requests
+          description: Requests
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/LabRequest'
     post:
-      summary: Submit new equipment request (Student)
+      summary: Submit a new equipment request
+      description: |
+        Kits are expanded into individual request lines server-side.
       requestBody:
         required: true
         content:
@@ -185,10 +466,15 @@ paths:
       responses:
         '201':
           description: Created request
-
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabRequest'
   /requests/{id}/decision:
     post:
-      summary: Make an approval or rejection decision on request (Admin)
+      summary: Approve, partially approve or reject a request (Admin only)
+      description: |
+        Decisions never change stock. Stock moves only at physical handover.
       parameters:
         - name: id
           in: path
@@ -204,10 +490,16 @@ paths:
       responses:
         '200':
           description: Decision applied
-
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/LabRequest'
   /issues:
     post:
-      summary: Physically issue approved items to student (Admin)
+      summary: Physically issue approved items at the counter (Admin only)
+      description: |
+        The single point where stock actually moves. Idempotent via
+        `clientCommandId`.
       requestBody:
         required: true
         content:
@@ -216,11 +508,15 @@ paths:
               $ref: '#/components/schemas/PhysicalIssueInput'
       responses:
         '200':
-          description: Items issued successfully
-
+          description: Items issued
+        '409':
+          description: Request line cannot be issued (not approved or already fulfilled)
   /returns:
     post:
-      summary: Process return of allocated items (Admin)
+      summary: Check returned items back into the lab (Admin only)
+      description: |
+        Records a condition per line and restocks or quarantines accordingly.
+        Idempotent via `clientCommandId`.
       requestBody:
         required: true
         content:
@@ -229,33 +525,9 @@ paths:
               $ref: '#/components/schemas/ProcessReturnInput'
       responses:
         '200':
-          description: Items returned successfully
-
-  /kits:
-    get:
-      summary: List kits / packages
-      responses:
-        '200':
-          description: List of kits
-
+          description: Return recorded
 components:
   schemas:
-    UserProfile:
-      type: object
-      properties:
-        id:
-          type: string
-        collegeId:
-          type: string
-        name:
-          type: string
-        email:
-          type: string
-          nullable: true
-        role:
-          type: string
-          enum: [ADMIN, STUDENT]
-
     Item:
       type: object
       properties:
@@ -271,10 +543,14 @@ components:
           nullable: true
         nature:
           type: string
-          enum: [RETURNABLE, CONSUMABLE]
+          enum:
+            - RETURNABLE
+            - CONSUMABLE
         trackingMode:
           type: string
-          enum: [SERIALIZED, BULK]
+          enum:
+            - SERIALIZED
+            - BULK
         categoryId:
           type: string
         categoryName:
@@ -290,7 +566,6 @@ components:
           nullable: true
         locationBreadcrumb:
           type: string
-
     Category:
       type: object
       properties:
@@ -301,7 +576,6 @@ components:
         description:
           type: string
           nullable: true
-
     Location:
       type: object
       properties:
@@ -311,11 +585,15 @@ components:
           type: string
         type:
           type: string
-          enum: [LAB, ROOM, CABINET, SHELF, DRAWER]
+          enum:
+            - LAB
+            - ROOM
+            - CABINET
+            - SHELF
+            - DRAWER
         parentId:
           type: string
           nullable: true
-
     CreateItemRequest:
       type: object
       required:
@@ -334,18 +612,21 @@ components:
           type: string
         nature:
           type: string
-          enum: [RETURNABLE, CONSUMABLE]
+          enum:
+            - RETURNABLE
+            - CONSUMABLE
         trackingMode:
           type: string
-          enum: [SERIALIZED, BULK]
+          enum:
+            - SERIALIZED
+            - BULK
         unitOfMeasure:
           type: string
-          default: "pcs"
+          default: pcs
         lowStockThreshold:
           type: integer
         defaultLocationId:
           type: string
-
     CreateRequestInput:
       type: object
       required:
@@ -355,7 +636,9 @@ components:
       properties:
         targetType:
           type: string
-          enum: [PERSONAL, PROJECT]
+          enum:
+            - PERSONAL
+            - PROJECT
         projectId:
           type: string
           nullable: true
@@ -378,7 +661,6 @@ components:
               quantity:
                 type: integer
                 minimum: 1
-
     RequestDecisionInput:
       type: object
       required:
@@ -387,7 +669,10 @@ components:
       properties:
         status:
           type: string
-          enum: [APPROVED, PARTIALLY_APPROVED, REJECTED]
+          enum:
+            - APPROVED
+            - PARTIALLY_APPROVED
+            - REJECTED
         decisionReason:
           type: string
         lines:
@@ -405,7 +690,6 @@ components:
                 minimum: 0
               rejectionReason:
                 type: string
-
     PhysicalIssueInput:
       type: object
       required:
@@ -439,7 +723,6 @@ components:
                 type: array
                 items:
                   type: string
-
     ProcessReturnInput:
       type: object
       required:
@@ -467,9 +750,11 @@ components:
                 nullable: true
               condition:
                 type: string
-                enum: [WORKING, NEEDS_CHECKING, NOT_WORKING]
+                enum:
+                  - WORKING
+                  - NEEDS_CHECKING
+                  - NOT_WORKING
                 default: WORKING
-
     PaginationMeta:
       type: object
       properties:
@@ -481,3 +766,458 @@ components:
           type: integer
         totalPages:
           type: integer
+    Role:
+      type: string
+      enum:
+        - ADMIN
+        - STUDENT
+    UserStatus:
+      type: string
+      enum:
+        - ACTIVE
+        - INACTIVE
+    ItemNature:
+      type: string
+      enum:
+        - RETURNABLE
+        - CONSUMABLE
+    TrackingMode:
+      type: string
+      enum:
+        - SERIALIZED
+        - BULK
+    UnitStatus:
+      type: string
+      enum:
+        - AVAILABLE
+        - ALLOCATED
+        - UNAVAILABLE
+        - RETIRED
+    ReturnCondition:
+      type: string
+      enum:
+        - WORKING
+        - NEEDS_CHECKING
+        - NOT_WORKING
+    DecisionStatus:
+      type: string
+      enum:
+        - PENDING
+        - APPROVED
+        - PARTIALLY_APPROVED
+        - REJECTED
+        - CANCELLED
+    FulfilmentStatus:
+      type: string
+      enum:
+        - NOT_ISSUED
+        - PARTIALLY_ISSUED
+        - FULFILLED
+    RequestTarget:
+      type: string
+      enum:
+        - PERSONAL
+        - PROJECT
+    LocationType:
+      type: string
+      enum:
+        - LAB
+        - ROOM
+        - CABINET
+        - SHELF
+        - DRAWER
+        - BIN
+    MovementType:
+      type: string
+      enum:
+        - RECEIPT
+        - ISSUE
+        - RETURN
+        - ADJUSTMENT_IN
+        - ADJUSTMENT_OUT
+        - LOCATION_TRANSFER
+    ChangePasswordInput:
+      type: object
+      required:
+        - currentPassword
+        - newPassword
+        - confirmPassword
+      properties:
+        currentPassword:
+          type: string
+        newPassword:
+          type: string
+          minLength: 10
+          description: Must contain an uppercase letter, a lowercase letter, a number and a symbol.
+        confirmPassword:
+          type: string
+    StockReceiptInput:
+      type: object
+      required:
+        - itemId
+        - locationId
+        - clientCommandId
+      properties:
+        itemId:
+          type: string
+        locationId:
+          type: string
+        quantity:
+          type: integer
+          minimum: 1
+          description: Required for BULK items.
+        assetCodes:
+          type: array
+          items:
+            type: string
+          description: Required for SERIALIZED items.
+        note:
+          type: string
+        referenceNumber:
+          type: string
+        clientCommandId:
+          type: string
+          description: Idempotency key — replaying it returns the original receipt.
+    CreateUserInput:
+      type: object
+      required:
+        - collegeId
+        - name
+        - role
+        - temporaryPassword
+      properties:
+        collegeId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        role:
+          $ref: '#/components/schemas/Role'
+        temporaryPassword:
+          type: string
+          minLength: 10
+    CreateProjectInput:
+      type: object
+      required:
+        - name
+        - memberIds
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        memberIds:
+          type: array
+          items:
+            type: string
+    CreateKitInput:
+      type: object
+      required:
+        - name
+        - items
+      properties:
+        name:
+          type: string
+        description:
+          type: string
+        items:
+          type: array
+          minItems: 1
+          items:
+            type: object
+            required:
+              - itemId
+              - quantity
+            properties:
+              itemId:
+                type: string
+              quantity:
+                type: integer
+                minimum: 1
+    ManagedUser:
+      type: object
+      properties:
+        id:
+          type: string
+        collegeId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        role:
+          $ref: '#/components/schemas/Role'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        mustChangePassword:
+          type: boolean
+        createdAt:
+          type: string
+          format: date-time
+    ProjectMember:
+      type: object
+      properties:
+        id:
+          type: string
+        userId:
+          type: string
+        role:
+          type: string
+        user:
+          type: object
+          properties:
+            id:
+              type: string
+            collegeId:
+              type: string
+            name:
+              type: string
+    LabProject:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        members:
+          type: array
+          items:
+            $ref: '#/components/schemas/ProjectMember'
+    Kit:
+      type: object
+      properties:
+        id:
+          type: string
+        name:
+          type: string
+        description:
+          type: string
+          nullable: true
+        isActive:
+          type: boolean
+        items:
+          type: array
+          items:
+            type: object
+            properties:
+              id:
+                type: string
+              itemId:
+                type: string
+              quantity:
+                type: integer
+              item:
+                $ref: '#/components/schemas/Item'
+    StockMovement:
+      type: object
+      properties:
+        id:
+          type: string
+        itemId:
+          type: string
+        unitId:
+          type: string
+          nullable: true
+        quantity:
+          type: integer
+        type:
+          $ref: '#/components/schemas/MovementType'
+        reason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        item:
+          type: object
+          properties:
+            name:
+              type: string
+        actor:
+          type: object
+          properties:
+            name:
+              type: string
+            collegeId:
+              type: string
+        unit:
+          type: object
+          nullable: true
+          properties:
+            assetCode:
+              type: string
+        sourceLocation:
+          type: object
+          nullable: true
+          properties:
+            name:
+              type: string
+        destLocation:
+          type: object
+          nullable: true
+          properties:
+            name:
+              type: string
+    DashboardMetrics:
+      type: object
+      properties:
+        totalItemsCount:
+          type: integer
+        activeProjectsCount:
+          type: integer
+        totalUnits:
+          type: integer
+        allocatedUnits:
+          type: integer
+        availableUnits:
+          type: integer
+        unavailableUnits:
+          type: integer
+        lowStockCount:
+          type: integer
+        pendingRequestsCount:
+          type: integer
+    Allocation:
+      type: object
+      properties:
+        id:
+          type: string
+        requestId:
+          type: string
+        studentId:
+          type: string
+        projectId:
+          type: string
+          nullable: true
+        expectedReturnDate:
+          type: string
+          format: date
+          nullable: true
+        note:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        student:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            collegeId:
+              type: string
+        project:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+        isFullyReturned:
+          type: boolean
+    InventoryUnit:
+      type: object
+      properties:
+        id:
+          type: string
+        assetCode:
+          type: string
+        serialNumber:
+          type: string
+          nullable: true
+        status:
+          $ref: '#/components/schemas/UnitStatus'
+        conditionNote:
+          type: string
+          nullable: true
+    StockBalance:
+      type: object
+      properties:
+        id:
+          type: string
+        locationId:
+          type: string
+        availableQuantity:
+          type: integer
+        allocatedQuantity:
+          type: integer
+    LabRequest:
+      type: object
+      properties:
+        id:
+          type: string
+        requesterId:
+          type: string
+        targetType:
+          $ref: '#/components/schemas/RequestTarget'
+        projectId:
+          type: string
+          nullable: true
+        purpose:
+          type: string
+        expectedReturnDate:
+          type: string
+          format: date
+          nullable: true
+        decisionStatus:
+          $ref: '#/components/schemas/DecisionStatus'
+        fulfilmentStatus:
+          $ref: '#/components/schemas/FulfilmentStatus'
+        decisionReason:
+          type: string
+          nullable: true
+        createdAt:
+          type: string
+          format: date-time
+        requester:
+          type: object
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+            collegeId:
+              type: string
+        project:
+          type: object
+          nullable: true
+          properties:
+            id:
+              type: string
+            name:
+              type: string
+    UserProfile:
+      type: object
+      required:
+        - id
+        - collegeId
+        - name
+        - role
+      properties:
+        id:
+          type: string
+        collegeId:
+          type: string
+        name:
+          type: string
+        email:
+          type: string
+          nullable: true
+        role:
+          $ref: '#/components/schemas/Role'
+        status:
+          $ref: '#/components/schemas/UserStatus'
+        mustChangePassword:
+          type: boolean
+          description: True for an admin-provisioned account until the first password change is completed.

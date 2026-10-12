@@ -41,6 +41,13 @@ export async function destroySession(token?: string) {
   await prisma.session.deleteMany({ where: { tokenHash: hashToken(token) } });
 }
 
+/** Revokes every session for a user, optionally keeping one alive. */
+export async function destroySessionsForUser(userId: string, keepSessionId?: string) {
+  await prisma.session.deleteMany({
+    where: { userId, ...(keepSessionId ? { id: { not: keepSessionId } } : {}) },
+  });
+}
+
 export async function requireAuth(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const token = req.cookies?.[SESSION_COOKIE];
   if (!token) {
@@ -77,6 +84,19 @@ export function requireAdmin(req: AuthenticatedRequest, res: Response, next: Nex
 export function requireCsrf(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   if (!req.csrfToken || req.get('x-csrf-token') !== req.csrfToken) {
     res.status(403).json({ error: { code: 'CSRF_INVALID', message: 'Security token missing or invalid' } });
+    return;
+  }
+  next();
+}
+
+/**
+ * Blocks state-changing work while the account is still on the temporary
+ * password the admin issued. Defence-in-depth: the UI also gates these
+ * screens behind a forced password-change form.
+ */
+export function requirePasswordChanged(req: AuthenticatedRequest, res: Response, next: NextFunction) {
+  if (req.user?.mustChangePassword) {
+    res.status(403).json({ error: { code: 'PASSWORD_CHANGE_REQUIRED', message: 'Change your temporary password before continuing' } });
     return;
   }
   next();

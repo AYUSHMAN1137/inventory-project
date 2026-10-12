@@ -204,47 +204,25 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/items": {
+    "/auth/password": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** List inventory items with filtering & search */
-        get: {
-            parameters: {
-                query?: {
-                    q?: string;
-                    categoryId?: string;
-                    nature?: "RETURNABLE" | "CONSUMABLE";
-                    availableOnly?: boolean;
-                    page?: number;
-                    pageSize?: number;
-                };
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description Paginated item list */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content: {
-                        "application/json": {
-                            data?: components["schemas"]["Item"][];
-                            meta?: components["schemas"]["PaginationMeta"];
-                        };
-                    };
-                };
-            };
-        };
+        get?: never;
         put?: never;
-        /** Create a new inventory item (Admin only) */
-        post: {
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        /**
+         * Change the signed-in user's password
+         * @description Required to leave the `mustChangePassword` state an admin-provisioned
+         *     account starts in. Revokes every other session on success.
+         */
+        patch: {
             parameters: {
                 query?: never;
                 header?: never;
@@ -253,12 +231,45 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["CreateItemRequest"];
+                    "application/json": components["schemas"]["ChangePasswordInput"];
                 };
             };
             responses: {
-                /** @description Created item */
-                201: {
+                /** @description Password updated; a fresh session cookie is issued */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            user?: components["schemas"]["UserProfile"];
+                            csrfToken?: string;
+                        };
+                    };
+                };
+                /** @description Validation error */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Current password is incorrect */
+                401: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description CSRF token missing or invalid */
+                403: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Too many attempts */
+                429: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -266,6 +277,47 @@ export interface paths {
                 };
             };
         };
+        trace?: never;
+    };
+    "/items/{id}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Get a single inventory item with units and balances */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description The item */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Item"];
+                    };
+                };
+                /** @description Item not found */
+                404: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        put?: never;
+        post?: never;
         delete?: never;
         options?: never;
         head?: never;
@@ -301,7 +353,34 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
+        /** Create a category (Admin only) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": {
+                        name: string;
+                        description?: string;
+                    };
+                };
+            };
+            responses: {
+                /** @description Created category */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Category"];
+                    };
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -337,41 +416,7 @@ export interface paths {
             };
         };
         put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/requests": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** List requests (scoped to student or all for admin) */
-        get: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody?: never;
-            responses: {
-                /** @description List of requests */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        put?: never;
-        /** Submit new equipment request (Student) */
+        /** Create a location (Admin only) */
         post: {
             parameters: {
                 query?: never;
@@ -381,11 +426,15 @@ export interface paths {
             };
             requestBody: {
                 content: {
-                    "application/json": components["schemas"]["CreateRequestInput"];
+                    "application/json": {
+                        name: string;
+                        type: components["schemas"]["LocationType"];
+                        parentId?: string | null;
+                    };
                 };
             };
             responses: {
-                /** @description Created request */
+                /** @description Created location */
                 201: {
                     headers: {
                         [name: string]: unknown;
@@ -400,7 +449,7 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/requests/{id}/decision": {
+    "/stock-receipts": {
         parameters: {
             query?: never;
             header?: never;
@@ -409,7 +458,314 @@ export interface paths {
         };
         get?: never;
         put?: never;
-        /** Make an approval or rejection decision on request (Admin) */
+        /**
+         * Receive stock into a location (Admin only)
+         * @description Creates serialized units and/or increments a bulk balance.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["StockReceiptInput"];
+                };
+            };
+            responses: {
+                /** @description Stock received */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/stock-movements": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Read the immutable stock movement ledger (Admin only) */
+        get: {
+            parameters: {
+                query?: {
+                    limit?: number;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Movement entries */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["StockMovement"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/dashboard/stats": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** Dashboard metrics, low-stock alerts and recent movements */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Dashboard payload */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            metrics?: components["schemas"]["DashboardMetrics"];
+                            lowStockItems?: {
+                                id?: string;
+                                name?: string;
+                                threshold?: number;
+                                current?: number;
+                            }[];
+                            recentMovements?: components["schemas"]["StockMovement"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/allocations": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List current allocations
+         * @description Admins see every allocation. Students see their own plus any project
+         *     they belong to.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Allocations with outstanding lines */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["Allocation"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/users": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List managed users (Admin only) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Users */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["ManagedUser"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Provision a user with a temporary password (Admin only)
+         * @description The created account has `mustChangePassword` set to true.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateUserInput"];
+                };
+            };
+            responses: {
+                /** @description Created user */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["ManagedUser"];
+                    };
+                };
+                /** @description College ID or email already in use */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/projects": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * List lab projects
+         * @description Students only see active projects they are a member of.
+         */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Projects */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["LabProject"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a project with student members (Admin only) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateProjectInput"];
+                };
+            };
+            responses: {
+                /** @description Created project */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests/{id}/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Cancel a request
+         * @description A student may cancel their own request while it is still PENDING and
+         *     nothing has been issued against it.
+         */
         post: {
             parameters: {
                 query?: never;
@@ -419,90 +775,17 @@ export interface paths {
                 };
                 cookie?: never;
             };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["RequestDecisionInput"];
-                };
-            };
+            requestBody?: never;
             responses: {
-                /** @description Decision applied */
+                /** @description Request cancelled */
                 200: {
                     headers: {
                         [name: string]: unknown;
                     };
                     content?: never;
                 };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/issues": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Physically issue approved items to student (Admin) */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["PhysicalIssueInput"];
-                };
-            };
-            responses: {
-                /** @description Items issued successfully */
-                200: {
-                    headers: {
-                        [name: string]: unknown;
-                    };
-                    content?: never;
-                };
-            };
-        };
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/returns": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        get?: never;
-        put?: never;
-        /** Process return of allocated items (Admin) */
-        post: {
-            parameters: {
-                query?: never;
-                header?: never;
-                path?: never;
-                cookie?: never;
-            };
-            requestBody: {
-                content: {
-                    "application/json": components["schemas"]["ProcessReturnInput"];
-                };
-            };
-            responses: {
-                /** @description Items returned successfully */
-                200: {
+                /** @description Request is no longer cancellable */
+                409: {
                     headers: {
                         [name: string]: unknown;
                     };
@@ -538,12 +821,323 @@ export interface paths {
                     headers: {
                         [name: string]: unknown;
                     };
-                    content?: never;
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["Kit"][];
+                        };
+                    };
                 };
             };
         };
         put?: never;
-        post?: never;
+        /** Create a kit template (Admin only) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateKitInput"];
+                };
+            };
+            responses: {
+                /** @description Created kit */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Kit"];
+                    };
+                };
+                /** @description Validation error or an unknown item was referenced */
+                400: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description A kit with this name already exists */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/items": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List inventory items with filtering & search */
+        get: {
+            parameters: {
+                query?: {
+                    q?: string;
+                    categoryId?: string;
+                    nature?: components["schemas"]["ItemNature"];
+                    availableOnly?: boolean;
+                };
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Matching items */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["Item"][];
+                            meta?: components["schemas"]["PaginationMeta"];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /** Create a new inventory item (Admin only) */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateItemRequest"];
+                };
+            };
+            responses: {
+                /** @description Created item */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["Item"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /** List requests (scoped to the student, or all for an admin) */
+        get: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody?: never;
+            responses: {
+                /** @description Requests */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": {
+                            data?: components["schemas"]["LabRequest"][];
+                        };
+                    };
+                };
+            };
+        };
+        put?: never;
+        /**
+         * Submit a new equipment request
+         * @description Kits are expanded into individual request lines server-side.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["CreateRequestInput"];
+                };
+            };
+            responses: {
+                /** @description Created request */
+                201: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LabRequest"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/requests/{id}/decision": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Approve, partially approve or reject a request (Admin only)
+         * @description Decisions never change stock. Stock moves only at physical handover.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path: {
+                    id: string;
+                };
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["RequestDecisionInput"];
+                };
+            };
+            responses: {
+                /** @description Decision applied */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content: {
+                        "application/json": components["schemas"]["LabRequest"];
+                    };
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/issues": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Physically issue approved items at the counter (Admin only)
+         * @description The single point where stock actually moves. Idempotent via
+         *     `clientCommandId`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["PhysicalIssueInput"];
+                };
+            };
+            responses: {
+                /** @description Items issued */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+                /** @description Request line cannot be issued (not approved or already fulfilled) */
+                409: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/returns": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Check returned items back into the lab (Admin only)
+         * @description Records a condition per line and restocks or quarantines accordingly.
+         *     Idempotent via `clientCommandId`.
+         */
+        post: {
+            parameters: {
+                query?: never;
+                header?: never;
+                path?: never;
+                cookie?: never;
+            };
+            requestBody: {
+                content: {
+                    "application/json": components["schemas"]["ProcessReturnInput"];
+                };
+            };
+            responses: {
+                /** @description Return recorded */
+                200: {
+                    headers: {
+                        [name: string]: unknown;
+                    };
+                    content?: never;
+                };
+            };
+        };
         delete?: never;
         options?: never;
         head?: never;
@@ -554,14 +1148,6 @@ export interface paths {
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
-        UserProfile: {
-            id?: string;
-            collegeId?: string;
-            name?: string;
-            email?: string | null;
-            /** @enum {string} */
-            role?: "ADMIN" | "STUDENT";
-        };
         Item: {
             id?: string;
             name?: string;
@@ -658,6 +1244,209 @@ export interface components {
             pageSize?: number;
             total?: number;
             totalPages?: number;
+        };
+        /** @enum {string} */
+        Role: "ADMIN" | "STUDENT";
+        /** @enum {string} */
+        UserStatus: "ACTIVE" | "INACTIVE";
+        /** @enum {string} */
+        ItemNature: "RETURNABLE" | "CONSUMABLE";
+        /** @enum {string} */
+        TrackingMode: "SERIALIZED" | "BULK";
+        /** @enum {string} */
+        UnitStatus: "AVAILABLE" | "ALLOCATED" | "UNAVAILABLE" | "RETIRED";
+        /** @enum {string} */
+        ReturnCondition: "WORKING" | "NEEDS_CHECKING" | "NOT_WORKING";
+        /** @enum {string} */
+        DecisionStatus: "PENDING" | "APPROVED" | "PARTIALLY_APPROVED" | "REJECTED" | "CANCELLED";
+        /** @enum {string} */
+        FulfilmentStatus: "NOT_ISSUED" | "PARTIALLY_ISSUED" | "FULFILLED";
+        /** @enum {string} */
+        RequestTarget: "PERSONAL" | "PROJECT";
+        /** @enum {string} */
+        LocationType: "LAB" | "ROOM" | "CABINET" | "SHELF" | "DRAWER" | "BIN";
+        /** @enum {string} */
+        MovementType: "RECEIPT" | "ISSUE" | "RETURN" | "ADJUSTMENT_IN" | "ADJUSTMENT_OUT" | "LOCATION_TRANSFER";
+        ChangePasswordInput: {
+            currentPassword: string;
+            /** @description Must contain an uppercase letter, a lowercase letter, a number and a symbol. */
+            newPassword: string;
+            confirmPassword: string;
+        };
+        StockReceiptInput: {
+            itemId: string;
+            locationId: string;
+            /** @description Required for BULK items. */
+            quantity?: number;
+            /** @description Required for SERIALIZED items. */
+            assetCodes?: string[];
+            note?: string;
+            referenceNumber?: string;
+            /** @description Idempotency key — replaying it returns the original receipt. */
+            clientCommandId: string;
+        };
+        CreateUserInput: {
+            collegeId: string;
+            name: string;
+            email?: string | null;
+            role: components["schemas"]["Role"];
+            temporaryPassword: string;
+        };
+        CreateProjectInput: {
+            name: string;
+            description?: string;
+            memberIds: string[];
+        };
+        CreateKitInput: {
+            name: string;
+            description?: string;
+            items: {
+                itemId: string;
+                quantity: number;
+            }[];
+        };
+        ManagedUser: {
+            id?: string;
+            collegeId?: string;
+            name?: string;
+            email?: string | null;
+            role?: components["schemas"]["Role"];
+            status?: components["schemas"]["UserStatus"];
+            mustChangePassword?: boolean;
+            /** Format: date-time */
+            createdAt?: string;
+        };
+        ProjectMember: {
+            id?: string;
+            userId?: string;
+            role?: string;
+            user?: {
+                id?: string;
+                collegeId?: string;
+                name?: string;
+            };
+        };
+        LabProject: {
+            id?: string;
+            name?: string;
+            description?: string | null;
+            isActive?: boolean;
+            members?: components["schemas"]["ProjectMember"][];
+        };
+        Kit: {
+            id?: string;
+            name?: string;
+            description?: string | null;
+            isActive?: boolean;
+            items?: {
+                id?: string;
+                itemId?: string;
+                quantity?: number;
+                item?: components["schemas"]["Item"];
+            }[];
+        };
+        StockMovement: {
+            id?: string;
+            itemId?: string;
+            unitId?: string | null;
+            quantity?: number;
+            type?: components["schemas"]["MovementType"];
+            reason?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            item?: {
+                name?: string;
+            };
+            actor?: {
+                name?: string;
+                collegeId?: string;
+            };
+            unit?: {
+                assetCode?: string;
+            } | null;
+            sourceLocation?: {
+                name?: string;
+            } | null;
+            destLocation?: {
+                name?: string;
+            } | null;
+        };
+        DashboardMetrics: {
+            totalItemsCount?: number;
+            activeProjectsCount?: number;
+            totalUnits?: number;
+            allocatedUnits?: number;
+            availableUnits?: number;
+            unavailableUnits?: number;
+            lowStockCount?: number;
+            pendingRequestsCount?: number;
+        };
+        Allocation: {
+            id?: string;
+            requestId?: string;
+            studentId?: string;
+            projectId?: string | null;
+            /** Format: date */
+            expectedReturnDate?: string | null;
+            note?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            student?: {
+                id?: string;
+                name?: string;
+                collegeId?: string;
+            };
+            project?: {
+                id?: string;
+                name?: string;
+            } | null;
+            isFullyReturned?: boolean;
+        };
+        InventoryUnit: {
+            id?: string;
+            assetCode?: string;
+            serialNumber?: string | null;
+            status?: components["schemas"]["UnitStatus"];
+            conditionNote?: string | null;
+        };
+        StockBalance: {
+            id?: string;
+            locationId?: string;
+            availableQuantity?: number;
+            allocatedQuantity?: number;
+        };
+        LabRequest: {
+            id?: string;
+            requesterId?: string;
+            targetType?: components["schemas"]["RequestTarget"];
+            projectId?: string | null;
+            purpose?: string;
+            /** Format: date */
+            expectedReturnDate?: string | null;
+            decisionStatus?: components["schemas"]["DecisionStatus"];
+            fulfilmentStatus?: components["schemas"]["FulfilmentStatus"];
+            decisionReason?: string | null;
+            /** Format: date-time */
+            createdAt?: string;
+            requester?: {
+                id?: string;
+                name?: string;
+                collegeId?: string;
+            };
+            project?: {
+                id?: string;
+                name?: string;
+            } | null;
+        };
+        UserProfile: {
+            id: string;
+            collegeId: string;
+            name: string;
+            email?: string | null;
+            role: components["schemas"]["Role"];
+            status?: components["schemas"]["UserStatus"];
+            /** @description True for an admin-provisioned account until the first password change is completed. */
+            mustChangePassword?: boolean;
         };
     };
     responses: never;

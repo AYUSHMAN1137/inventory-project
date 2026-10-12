@@ -13,14 +13,10 @@
   },
   "dependencies": {
     "@deeptech/contracts": "*",
-    "@tanstack/react-query": "^5.67.1",
-    "clsx": "^2.1.1",
     "lucide-react": "^1.16.0",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
-    "react-hook-form": "^7.54.2",
-    "react-router-dom": "^7.2.0",
-    "tailwind-merge": "^3.0.2"
+    "react-router-dom": "^7.2.0"
   },
   "devDependencies": {
     "@types/react": "^19.0.10",

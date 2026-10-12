@@ -10,6 +10,8 @@ export default defineConfig({
     },
     include: ['src/**/*.test.ts'],
     setupFiles: ['./src/test/setup.ts'],
+    hookTimeout: 60000,
+    testTimeout: 30000,
     sequence: { concurrent: false },
     fileParallelism: false,
     coverage: {

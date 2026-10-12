@@ -1,4 +1,5 @@
 import { Router, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../db.js';
 import { AuthenticatedRequest, requireAuth } from '../middleware/auth.js';
 
@@ -8,7 +9,7 @@ export const allocationsRouter = Router();
 allocationsRouter.get('/', requireAuth, async (req: AuthenticatedRequest, res: Response) => {
   const isStudent = req.user!.role === 'STUDENT';
 
-  const whereClause: any = {};
+  const whereClause: Prisma.IssueWhereInput = {};
   if (isStudent) {
     whereClause.OR = [
       { studentId: req.user!.id },

@@ -1,6 +1,10 @@
 import express, { type Request, type Response } from 'express';
 import path from 'node:path';
+import compression from 'compression';
+import { randomUUID } from 'node:crypto';
 import { prisma } from './db.js';
+import { env, loadEnv } from './env.js';
+import { logger } from './logger.js';
 import cors from 'cors';
 import helmet from 'helmet';
 import cookieParser from 'cookie-parser';
@@ -13,26 +17,69 @@ import { kitsRouter } from './routes/kits.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { allocationsRouter } from './routes/allocations.js';
 import { managementRouter } from './routes/management.js';
-import { requireAuth, requireCsrf } from './middleware/auth.js';
+import { requireAuth, requireCsrf, requirePasswordChanged } from './middleware/auth.js';
+
+// Fail fast on misconfiguration rather than breaking later at runtime.
+const config = loadEnv();
 
 export const app = express();
 
 app.disable('x-powered-by');
+app.set('trust proxy', 1);
 app.use(helmet());
+app.use(compression());
 app.use(express.json({ limit: '100kb' }));
 app.use(cookieParser());
-if (process.env.NODE_ENV !== 'production') {
+
+// Attach a request id so log lines from one request can be tied together.
+app.use((req: Request, res: Response, next: express.NextFunction) => {
+  const incoming = req.get('x-request-id');
+  const requestId = incoming && incoming.length <= 128 ? incoming : randomUUID();
+  res.setHeader('x-request-id', requestId);
+  (req as Request & { id?: string }).id = requestId;
+  next();
+});
+
+app.use((req: Request, res: Response, next: express.NextFunction) => {
+  const started = process.hrtime.bigint();
+  res.on('finish', () => {
+    const durationMs = Number(process.hrtime.bigint() - started) / 1_000_000;
+    logger.info('http request', {
+      requestId: (req as Request & { id?: string }).id,
+      method: req.method,
+      path: req.originalUrl,
+      status: res.statusCode,
+      durationMs: Number(durationMs.toFixed(1)),
+    });
+  });
+  next();
+});
+
+if (config.NODE_ENV !== 'production') {
   app.use(cors({
-    origin: process.env.WEB_ORIGIN || 'http://localhost:5173',
+    origin: config.WEB_ORIGIN,
     credentials: true,
   }));
 }
+
+// Routes a signed-in user must always be able to reach, even while the
+// account is still on the temporary password the admin issued.
+const PASSWORD_GATE_EXEMPT = ['/auth/password', '/auth/logout', '/auth/me'];
+
 app.use('/api/v1', (req, res, next) => {
   if (!['POST', 'PUT', 'PATCH', 'DELETE'].includes(req.method) || req.path === '/auth/login') {
     next();
     return;
   }
-  requireAuth(req, res, () => requireCsrf(req, res, next));
+  requireAuth(req, res, () =>
+    requireCsrf(req, res, () => {
+      if (PASSWORD_GATE_EXEMPT.includes(req.path)) {
+        next();
+        return;
+      }
+      requirePasswordChanged(req, res, next);
+    }),
+  );
 });
 
 // API Routes
@@ -46,7 +93,7 @@ app.use('/api/v1/dashboard', dashboardRouter);
 app.use('/api/v1/allocations', allocationsRouter);
 app.use('/api/v1', managementRouter);
 
-if (process.env.NODE_ENV === 'production') {
+if (config.NODE_ENV === 'production') {
   const webDist = path.resolve(process.cwd(), 'apps/web/dist');
   app.use(express.static(webDist, { index: false }));
   app.get(/^(?!\/api\/).*/, (_req: Request, res: Response) => {
@@ -63,7 +110,8 @@ app.get('/api/v1/health/ready', async (_req: Request, res: Response) => {
   try {
     await prisma.$queryRaw`SELECT 1`;
     res.json({ status: 'ready' });
-  } catch {
+  } catch (err) {
+    logger.error('readiness check failed', { error: err instanceof Error ? err.message : String(err) });
     res.status(503).json({ status: 'not_ready' });
   }
 });
@@ -72,7 +120,19 @@ app.use((_req: Request, res: Response) => {
   res.status(404).json({ error: { code: 'NOT_FOUND', message: 'Endpoint not found' } });
 });
 
-app.use((error: unknown, _req: Request, res: Response, _next: express.NextFunction) => {
-  console.error(error);
-  res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred' } });
+// Central error handler. Stack traces are logged, never returned to clients.
+app.use((error: unknown, req: Request, res: Response, _next: express.NextFunction) => {
+  const requestId = (req as Request & { id?: string }).id;
+  const message = error instanceof Error ? error.message : String(error);
+  logger.error('unhandled request error', { requestId, method: req.method, path: req.originalUrl, error: message });
+
+  if (res.headersSent) return;
+  if (config.NODE_ENV === 'production') {
+    res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred', requestId } });
+    return;
+  }
+  res.status(500).json({ error: { code: 'INTERNAL_ERROR', message: 'An unexpected error occurred', requestId, detail: message } });
 });
+
+export { config as appConfig, env };
+

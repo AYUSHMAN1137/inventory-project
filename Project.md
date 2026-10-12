@@ -1,6 +1,98 @@
 # Deep-Tech Innovation Centre — Lab Inventory Management System
 
-> **Status (2026-09-22): Active production rebuild.** Secure backend workflows, an operational student/admin frontend, automated API/component tests, and PostgreSQL deployment assets now exist. The project is **not yet production-complete**: PostgreSQL runtime/concurrency execution, Playwright browser coverage, backup restoration, and final operational sign-off remain unverified.
+> **Status (2026-10-10): Frontend fully rebuilt and verified end-to-end against the live API.** The mock-data frontend was removed completely and replaced with a real, API-backed 13-screen application. Every workflow (login → request → approve → issue → return → intake → audit) was exercised in a real browser against the running SQLite/Prisma backend and confirmed to persist correctly. Backend unchanged apart from one blocking fix (`dotenv` was never loaded; the API only worked when `start.bat` exported `DATABASE_URL`).
+
+## 0. Frontend Rebuild — 2026-10-10
+
+### E2E test suite + responsive fixes (same day)
+
+The stale Playwright spec (`e2e/shell.spec.ts`) targeted the deleted UI and 2 of its
+3 tests failed. It was replaced with a real suite that runs against the **live**
+backend (no API mocking).
+
+**Harness**
+- `playwright.config.ts` starts two webServers: `e2e/start-api.mjs` (creates and
+  seeds a dedicated `apps/api/prisma/e2e.db`, then boots the API on :4000) and the
+  Vite dev server on :5173. `dev.db` is never touched.
+- `e2e/reset-db.ts` clears and re-seeds the E2E database in each spec's `beforeAll`,
+  so files are order-independent — the intake spec can create items without
+  breaking the catalogue spec.
+- `e2e/helpers.ts` centralises login/logout, prefix-matching sidebar navigation
+  (links carry badge counts), and overlay/footer targeting.
+
+**Coverage — 32 tests across 4 specs, all passing**
+| Spec | Covers |
+|---|---|
+| `auth.spec.ts` (8) | Signed-out gate, invalid credentials, login, session survives reload, logout clears session, role separation, admin-route protection, every admin screen renders |
+| `catalog.spec.ts` (11) | Catalogue load, search, category/nature filters, card↔table toggle, detail drawer, student cart → submit, quantity editing, validation error, admin approve/reject |
+| `lifecycle.spec.ts` (2) | Full chain with **stock assertions**: request → approve (stock unchanged) → issue (stock −1) → return (stock restored); ledger rows + CSV download |
+| `admin.spec.ts` (11) | Kits + BOM, kit → cart, layout drill-down, intake receipt verified against stock, new catalogue item, users/projects, responsive behaviour |
+
+**Two real bugs found and fixed by the tests**
+
+1. **Mobile layout overflowed 145px on every screen** — the app was unusable on a
+   phone. The fixed 256px sidebar had no mobile behaviour and the topbar never
+   wrapped. Fixed with a slide-over drawer (`data-testid="mobile-nav"`) below `lg`,
+   a menu button, a wrapping topbar, and `overflow-x-auto` table wrappers. Verified
+   overflow is now 0px on every screen at 390×844.
+2. **Form labels were not associated with their inputs** (no `htmlFor`/`id`) in the
+   intake modal and elsewhere, so `getByLabel` could not resolve them — a genuine
+   accessibility defect. Fixed in `IntakeView`; also added `aria-label`s to the
+   icon-only cart quantity/remove buttons and the topbar controls.
+
+### Frontend Rebuild — original pass
+
+### What was removed
+- The entire previous `apps/web/src` tree (mock-data prototype: `mockLabData.ts`, `LabContext` with hardcoded fixtures, 10 disconnected views, dark indigo "AI dashboard" styling) was deleted outright at the user's explicit instruction.
+- The previous frontend **never called the API** — it rendered static fixtures in a dark purple/indigo theme that had already been rejected.
+
+### What was built
+A production-shaped frontend built directly against the live Express API (`/api/v1`), in a restrained operational style: navy sidebar, light workspace, teal accent, dense readable tables.
+
+**Architecture**
+- `src/lib/api.ts` — typed API client: `credentials: 'same-origin'`, in-memory CSRF token sent as `x-csrf-token`, structured `ApiError`, `newCommandId()` for idempotent write operations.
+- `src/context/AuthContext.tsx` — session restore via `GET /auth/me` on mount; login/logout; role flags.
+- `src/context/LabContext.tsx` — single source of truth for items, categories, locations, kits, requests, allocations, projects, users and dashboard metrics. **Reloads automatically when the signed-in identity changes.**
+- `src/context/CartContext.tsx` — multi-item request cart.
+- `src/components/common/ui.tsx` — design primitives (Badge, Modal, Drawer, Callout, KpiCard, StockBar, Empty/Loading/Error states) plus status-tone helpers shared across every screen.
+
+**Screens (13)**
+| Admin | Student |
+|---|---|
+| Dashboard (KPIs, low stock, activity) | Dashboard (personal KPIs, own requests, loans) |
+| Inventory (grid + table, filters, detail drawer) | Browse Inventory (same catalogue, cart actions) |
+| Request Queue (queue + partial-approval modal) | My Requests (status timeline) |
+| Issue Desk (counter handover, serialized unit picker) | My Borrowed Items |
+| Returns Desk (3-tier condition grading) | Kits & Bundles (1-click add BOM to cart) |
+| Stock Intake (item/location/asset-code receipt) | Lab Layout (room → cabinet → drawer explorer) |
+| Kits & Bundles, Lab Layout, Audit Ledger (CSV export), Users & Projects | Request Cart |
+
+### Verified end-to-end in a real browser (Chromium via CDP)
+1. **Login** as admin and as student; session survives reload via HttpOnly cookie.
+2. **Request → Approve**: Priya Nair's request approved in the UI; DB confirmed `APPROVED` with approved quantities, others untouched.
+3. **Issue**: handed over Arduino (unit `ARD-003` chosen from live picker) + 2 servos. DB confirmed stock 6→5 and 18→16, `ARD-003 → ALLOCATED`, allocation created, 2 `ISSUE` movements logged.
+4. **Return**: Arduino checked in as *Needs checking* → `ARD-003 → UNAVAILABLE` (not restocked); servos returned *Working* → 16→18. Both logged with exact condition. **Condition logic proven correct.**
+5. **Student request**: submitted from cart, persisted as `PENDING`, appeared in My Requests.
+6. **Stock intake**: bulk receipt of 10 jumpers → 48→58 with a `RECEIPT` movement logged.
+7. **Role separation**: student sees no admin navigation; admin-only routes redirect.
+
+### Verification results
+- `tsc --noEmit` — clean (0 errors) for both `apps/web` and `apps/api`.
+- `vite build` — succeeds; 1924 modules; 395 kB JS (113 kB gzip), 24 kB CSS.
+- API test suite — **10/10 pass** (`auth`, `management`, `workflows`). Required raising `hookTimeout` to 60s: the DB-reset hook exceeded the 10s default on this machine.
+- Live API smoke: 36 items, 6 kits, 73 serialized units, 30 locations, 7 categories, 3 projects.
+
+### Backend fix (blocking bug)
+`apps/api/src/server.ts` never loaded environment variables, so `DATABASE_URL` was undefined at runtime and every DB call failed with *"Environment variable not found: DATABASE_URL"*. The API only ever worked because `start.bat` exported the variable into the shell. Fixed by adding `import 'dotenv/config'` as the first import, and `start.bat` no longer needs to set it.
+
+### Seed data
+`apps/api/prisma/seed.ts` expanded from 4 items to a full demo dataset: **7 categories, 36 authentic components, 73 serialized units, 30 locations across 4 rooms, 6 kits, 3 projects, 6 users, 3 pending requests.** All credentials use password `Password@123`.
+
+### Not done in this pass
+- Backend was intentionally left functionally unchanged (user's instruction: frontend first).
+- PostgreSQL runtime, concurrency tests and backup/restore drill remain unverified (no Docker/PostgreSQL on this machine).
+
+---
 
 ## 1. Project Origin
 
@@ -536,6 +628,25 @@ The user has explicitly authorized Build Mode and does not want further prototyp
 - The prototype remains only a historical discussion artifact. The user explicitly removed the prototype approval gate and directed implementation of the final product; it is not used by the runtime application.
 
 ## 25. Change Log
+
+### 2026-10-10 — E2E Test Suite Rebuilt; Two Product Bugs Found and Fixed
+
+- Replaced the stale `e2e/shell.spec.ts` (targeted the deleted UI; 2 of 3 tests failing) with 32 Playwright tests across four specs, all running against the real Express + Prisma backend with no API mocking.
+- Added a dedicated, auto-seeded `e2e.db` plus per-file database reset so specs are order-independent and never touch `dev.db`.
+- Fixed a genuine responsive defect: the app overflowed horizontally by 145px on every screen at mobile width. Added a slide-over navigation drawer, a wrapping topbar, and contained table scrolling; verified 0px overflow on all 13 screens at 390×844.
+- Fixed an accessibility defect: form labels lacked `htmlFor`/`id` association; added those plus `aria-label`s to icon-only controls.
+- Added `npm run test:e2e`, `test:e2e:ui`, `test:e2e:report`, and `e2e/README.md`.
+
+### 2026-10-10 — Frontend Rebuilt From Scratch Against the Live API
+
+- Analysed the whole repository: real Express 5 + Prisma backend, but a frontend that ran entirely on hardcoded mock data and never called the API.
+- Warned the user that the existing backup folder (`inventory project - Copy`) held the **old** frontend, not the current one; the user chose to delete the current frontend without preserving it.
+- Deleted the complete previous `apps/web/src` tree and rebuilt 13 screens against real endpoints.
+- Fixed a blocking backend bug: `apps/api/src/server.ts` never loaded `dotenv`, so `DATABASE_URL` was undefined at runtime.
+- Expanded the seed from 4 items to 7 categories / 36 components / 73 serialized units / 30 locations / 6 kits / 3 projects / 6 users / 3 pending requests.
+- Verified login, request→approve, issue (with serialized unit selection), return (with condition grading), student submission, and stock intake in a live browser; confirmed each against the database.
+- Restyled from the rejected dark purple/indigo AI-dashboard look to a restrained navy + light operational system.
+- `tsc` clean, `vite build` green, API tests 10/10.
 
 ### 2026-09-22 — Foreground Single-Window Process Lifecycle & Port Cleanup
 
