@@ -8,7 +8,7 @@ import { useAuth } from '../../context/AuthContext';
  * form is a plain credential form with no shortcuts — the password is never
  * bundled into the client.
  */
-const DEMO_HINT = import.meta.env.VITE_SHOW_DEMO_HINTS === 'true';
+const DEMO_HINT = import.meta.env.DEV || import.meta.env.VITE_SHOW_DEMO_HINTS === 'true';
 
 export function LoginScreen() {
   const { login, error } = useAuth();
