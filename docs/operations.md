@@ -18,6 +18,64 @@
 
 ## Deploy
 
+### Option A: Cloud Split Architecture (Vercel + Render + PostgreSQL) — CURRENT PRODUCTION
+The current live deployment separates the frontend and backend tiers:
+
+```
+┌──────────────────────────┐          /api/v1/*           ┌──────────────────────────────┐
+│       Vercel (SPA)       │ ───────────────────────────► │     Render Web Service       │
+│  apps/web (Vite React)   │   proxied via vercel.json    │   apps/api (Node 22 Express) │
+│  https://...vercel.app   │                              │ https://...onrender.com      │
+└──────────────────────────┘                              └──────────────┬───────────────┘
+                                                                         │ Prisma ORM
+                                                                         ▼
+                                                          ┌──────────────────────────────┐
+                                                          │   Render PostgreSQL (16+)    │
+                                                          │   inventory_geu_dtic         │
+                                                          └──────────────────────────────┘
+```
+
+1. **Render PostgreSQL Database**:
+   - Provisioned as Render Managed PostgreSQL (`inventory_geu_dtic`).
+   - Copy the internal URL (`postgresql://...`) for the Render web service, and external URL for remote management.
+
+2. **Render Web Service (`apps/api`)**:
+   - **Root Directory**: `[blank]` (repo root, preserves monorepo dependencies).
+   - **Build Command**:
+     ```bash
+     npm ci --include=dev && npx prisma generate --schema apps/api/prisma/schema.postgresql.prisma && npm run build --workspace=apps/api
+     ```
+   - **Start Command**:
+     ```bash
+     npx prisma db push --schema apps/api/prisma/schema.postgresql.prisma --skip-generate && npm run prisma:seed --workspace=apps/api && npm run start --workspace=apps/api
+     ```
+   - **Environment Variables**:
+     - `DATABASE_URL`: Internal Postgres connection string
+     - `NODE_ENV`: `production`
+     - `SESSION_SECRET`: Random 32+ character string
+     - `PORT`: `4000` (or leave default assigned by Render)
+     - `APP_ORIGIN`: Vercel public URL
+
+3. **Vercel Frontend (`apps/web`)**:
+   - **Root Directory**: `apps/web`
+   - **Framework Preset**: `Vite`
+   - **API Proxy**: `apps/web/vercel.json` rewrites all `/api/*` requests directly to Render:
+     ```json
+     {
+       "rewrites": [
+         { "source": "/api/:path*", "destination": "https://inventory-project-7g7s.onrender.com/api/:path*" },
+         { "source": "/(.*)", "destination": "/index.html" }
+       ]
+     }
+     ```
+   - **Environment Variables**:
+     - `VITE_SHOW_DEMO_HINTS`: `true` (enables One-Click Demo Login cards on the login page)
+
+4. **Database & Environment Isolation**:
+   - **Local Environment (`localhost:5173`)**: Uses local SQLite (`apps/api/prisma/dev.db`), Express on `:4000`, One-Click demo login always active via `import.meta.env.DEV`.
+   - **Production (Vercel + Render)**: Uses Render PostgreSQL. Any mutations, stock receipts, or ledger rows remain completely isolated from local development.
+
+### Option B: Unified Single Container (Docker Compose)
 1. Provision an empty PostgreSQL database and a least-privilege application user.
 2. Set `DATABASE_URL` and `APP_ORIGIN`.
 3. Build the container: `docker compose build`.

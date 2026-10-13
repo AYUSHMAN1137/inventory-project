@@ -211,10 +211,15 @@ requests (+ decision + cancel), kits, issues and returns.
 ---
 
 ## 11. Deployment
+ 
+The production architecture is deployed across a cloud split tier:
+- **Frontend**: [Vercel](https://vercel.com) (`apps/web` Vite SPA with `vercel.json` API proxy rewrites).
+- **Backend**: [Render](https://render.com) (`apps/api` Express 5 REST service at `/api/v1`).
+- **Production Database**: Render Managed PostgreSQL 16 (`inventory_geu_dtic`).
+- **Local Dev Database**: SQLite (`dev.db`), completely isolated from the cloud database.
 
-See [docs/operations.md](docs/operations.md) for the full runbook (migrations, backups,
-restore drills, rollback, incident checks) and [docs/deploy-checklist.md](docs/deploy-checklist.md)
-for the release gate. Container images: [Dockerfile](Dockerfile) + [docker-compose.yml](docker-compose.yml).
+See [docs/operations.md](docs/operations.md) for the full runbook (Vercel + Render setup, Docker Compose alternative, migrations, backups, restore drills, rollback) and [docs/deploy-checklist.md](docs/deploy-checklist.md) for the release gate. Container images: [Dockerfile](Dockerfile) + [docker-compose.yml](docker-compose.yml).
+
 
 ## 12. Project docs
 

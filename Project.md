@@ -1,8 +1,26 @@
 # Deep-Tech Innovation Centre — Lab Inventory Management System
 
-> **Status (2026-10-10): Frontend fully rebuilt and verified end-to-end against the live API.** The mock-data frontend was removed completely and replaced with a real, API-backed 13-screen application. Every workflow (login → request → approve → issue → return → intake → audit) was exercised in a real browser against the running SQLite/Prisma backend and confirmed to persist correctly. Backend unchanged apart from one blocking fix (`dotenv` was never loaded; the API only worked when `start.bat` exported `DATABASE_URL`).
+> **Status (2026-10-13): Live Cloud Split Deployment (Vercel + Render + PostgreSQL) fully operational with local dev parity.**
+> - Frontend deployed to **Vercel** (`apps/web` Vite SPA with `vercel.json` API proxy rewrites).
+> - Backend deployed to **Render** (`apps/api` Express 5 REST API on Node 22).
+> - Production database running on **Render PostgreSQL 16** (`inventory_geu_dtic`).
+> - Local development remains 100% isolated using SQLite (`dev.db`).
+> - One-Click Demo Logins enabled seamlessly in local dev (`import.meta.env.DEV`) and via `VITE_SHOW_DEMO_HINTS=true` in production.
 
-## 0. Frontend Rebuild — 2026-10-10
+## 0. Cloud Split Deployment & Environment Parity — 2026-10-13
+
+### Architecture & Live Verification
+- **Frontend (Vercel)**: Deployed from monorepo directory `apps/web`. Uses Vite SPA preset. `vercel.json` provides transparent proxy rewrites forwarding `/api/:path*` to the Render backend, preserving HttpOnly session cookies and CSRF protection without cross-origin friction.
+- **Backend (Render Web Service)**: Deployed at `https://inventory-project-7g7s.onrender.com`. Monorepo root build command incorporates `--include=dev` to ensure `@types/*` are present for production TypeScript compilation.
+- **Database (Render PostgreSQL)**: Automated schema sync and seed execution integrated into start command (`npx prisma db push --schema apps/api/prisma/schema.postgresql.prisma --skip-generate && npm run prisma:seed --workspace=apps/api && npm run start --workspace=apps/api`).
+- **Data Parity & Isolation**:
+  - `Local`: SQLite `apps/api/prisma/dev.db` for safe, off-cloud testing.
+  - `Cloud`: PostgreSQL `inventory_geu_dtic` for persistent production records.
+- **One-Click Demo Authentication**: Restored quick-login cards for Dr. R. K. Verma (`ADMIN001`) and Ayush Sharma (`2024BCSE042`), configured to render automatically in dev environments (`import.meta.env.DEV`) and conditionally in production (`VITE_SHOW_DEMO_HINTS=true`).
+
+---
+
+## 0.1 Frontend Rebuild — 2026-10-10
 
 ### E2E test suite + responsive fixes (same day)
 

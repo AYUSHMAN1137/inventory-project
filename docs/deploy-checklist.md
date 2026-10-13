@@ -23,13 +23,16 @@
 - [ ] `git status` saaf — koi untracked scratch script nahi (`scratch-*.mjs` delete ho chuka)
 
 ## 3. Configuration & secrets
-
+ 
 - [ ] `.env.example` commit hai, asli `.env` **gitignored** hai
 - [ ] Production `SESSION_SECRET` ≥ 32 chars, unique, secret store me hai — repo me nahi
 - [ ] `DATABASE_URL` production Postgres ka hai (SQLite dev-only)
 - [ ] `APP_ORIGIN` production URL pe set hai; CORS dev origin (`WEB_ORIGIN`) ko allow karta hai
 - [ ] `NODE_ENV=production`, `LOG_LEVEL=info` (ya `warn`)
 - [ ] `VITE_*` me koi secret nahi — bundle public hota hai
+- [ ] Vercel `vercel.json` rewrites points to Render backend (`https://inventory-project-7g7s.onrender.com/api/:path*`)
+- [ ] Render Build Command includes `--include=dev` to ensure TypeScript compilation succeeds in production mode
+- [ ] One-Click Demo Logins configured: active locally via `import.meta.env.DEV`, enabled on Vercel via `VITE_SHOW_DEMO_HINTS=true`
 
 ## 4. Database & migrations
 
